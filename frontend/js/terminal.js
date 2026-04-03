@@ -36,11 +36,15 @@
    */
   function _buildOptions() {
     const s = (window.mateSettings || {}).terminal || {};
-    const schemeName = ((window.mateSettings || {}).appearance || {}).color_scheme || 'deep_space';
+    const a  = (window.mateSettings || {}).appearance || {};
+    const schemeName = a.color_scheme || 'deep_space';
     const schemeObj  = typeof window.getColorScheme === 'function'
       ? window.getColorScheme(schemeName)
       : null;
-    const theme = schemeObj ? schemeObj.theme : _fallbackTheme();
+    const theme = schemeObj ? Object.assign({}, schemeObj.theme) : _fallbackTheme();
+    // Apply per-channel overrides if set
+    if (a.foreground_override) theme.foreground = a.foreground_override;
+    if (a.background_override) theme.background = a.background_override;
 
     return {
       theme,
@@ -75,6 +79,9 @@
    * @returns {{terminal: Terminal, fitAddon: FitAddon, websocket: WebSocket, containerId: string}}
    */
   function initTerminal(sessionId) {
+    // Running count of newlines received — used by the status bar
+    let _bufferLines = 0;
+
     // ------------------------------------------------------------------
     // 1. Create the xterm.js Terminal instance with current settings
     // ------------------------------------------------------------------
@@ -127,6 +134,13 @@
       switch (msg.type) {
         case 'output':
           terminal.write(msg.data);
+          // Count newlines to maintain a running buffer line total
+          _bufferLines += (msg.data.match(/\n/g) || []).length;
+          if (typeof window.updateStatusBar === 'function') window.updateStatusBar();
+          // Notify chat.js so it can feed command output back to the AI
+          window.dispatchEvent(new CustomEvent('mate:terminal-output', {
+            detail: { sessionId, data: msg.data, totalLines: _bufferLines }
+          }));
           break;
 
         case 'hostname_detected':
@@ -231,7 +245,7 @@
     // ------------------------------------------------------------------
     _instances[sessionId] = { terminal, fitAddon, websocket, containerId };
 
-    return { terminal, fitAddon, websocket, containerId };
+    return { terminal, fitAddon, websocket, containerId, getBufferLines: () => _bufferLines };
   }
 
   // -------------------------------------------------------------------------
@@ -249,7 +263,10 @@
 
     Object.values(_instances).forEach(({ terminal, fitAddon }) => {
       if (schemeObj) {
-        terminal.options.theme = schemeObj.theme;
+        const theme = Object.assign({}, schemeObj.theme);
+        if (a.foreground_override) theme.foreground = a.foreground_override;
+        if (a.background_override) theme.background = a.background_override;
+        terminal.options.theme = theme;
       }
       if (s.font_size)    terminal.options.fontSize    = s.font_size;
       if (s.font_family)  terminal.options.fontFamily   = s.font_family;

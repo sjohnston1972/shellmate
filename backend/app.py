@@ -32,6 +32,8 @@ from pydantic import BaseModel
 from backend.connections.manager import SessionManager
 from backend.profiles import get_profiles, save_profile, delete_profile
 from backend.settings_store import get_settings, update_settings
+from backend.ai.router import stream_chat
+from backend.config import DEFAULT_AI_BACKEND
 
 logger = logging.getLogger(__name__)
 
@@ -379,3 +381,64 @@ async def terminal_websocket(websocket: WebSocket, session_id: str) -> None:
 
     session["is_connected"] = False
     logger.info("WebSocket closed for session %s", session_id)
+
+
+# ---------------------------------------------------------------------------
+# WebSocket — AI chat
+# ---------------------------------------------------------------------------
+
+@app.websocket("/ws/chat")
+async def chat_websocket(websocket: WebSocket) -> None:
+    """
+    Streaming AI chat WebSocket.
+
+    Receives from browser:
+      {"message": "...", "session_id": "...", "backend": "claude|ollama", "context_mode": "active|all|1|2..."}
+
+    Streams to browser:
+      {"type": "chunk",  "data": "..."}    — one per token
+      {"type": "done"}                     — stream complete
+      {"type": "error",  "message": "..."}  — on failure
+    """
+    await websocket.accept()
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                await websocket.send_text(
+                    json.dumps({"type": "error", "message": "Invalid JSON"})
+                )
+                continue
+
+            user_message = msg.get("message", "").strip()
+            session_id   = msg.get("session_id")
+            backend      = msg.get("backend", DEFAULT_AI_BACKEND)
+            context_mode = msg.get("context_mode", "active")
+
+            if not user_message:
+                continue
+
+            try:
+                async for chunk in stream_chat(
+                    message=user_message,
+                    active_session_id=session_id,
+                    backend=backend,
+                    context_mode=context_mode,
+                    session_manager=session_manager,
+                ):
+                    await websocket.send_text(
+                        json.dumps({"type": "chunk", "data": chunk})
+                    )
+
+                await websocket.send_text(json.dumps({"type": "done"}))
+
+            except Exception as exc:
+                logger.error("AI chat error: %s", exc)
+                await websocket.send_text(
+                    json.dumps({"type": "error", "message": str(exc)})
+                )
+
+    except WebSocketDisconnect:
+        pass

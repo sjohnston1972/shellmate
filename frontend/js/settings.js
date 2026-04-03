@@ -111,6 +111,81 @@
         brightWhite:   '#FFFFFF',
       },
     },
+    gruvbox: {
+      label: 'Gruvbox Dark',
+      theme: {
+        background:    '#282828',
+        foreground:    '#EBDBB2',
+        cursor:        '#EBDBB2',
+        cursorAccent:  '#282828',
+        black:         '#282828',
+        red:           '#CC241D',
+        green:         '#98971A',
+        yellow:        '#D79921',
+        blue:          '#458588',
+        magenta:       '#B16286',
+        cyan:          '#689D6A',
+        white:         '#A89984',
+        brightBlack:   '#928374',
+        brightRed:     '#FB4934',
+        brightGreen:   '#B8BB26',
+        brightYellow:  '#FABD2F',
+        brightBlue:    '#83A598',
+        brightMagenta: '#D3869B',
+        brightCyan:    '#8EC07C',
+        brightWhite:   '#EBDBB2',
+      },
+    },
+    dracula: {
+      label: 'Dracula',
+      theme: {
+        background:    '#282A36',
+        foreground:    '#F8F8F2',
+        cursor:        '#F8F8F2',
+        cursorAccent:  '#282A36',
+        black:         '#21222C',
+        red:           '#FF5555',
+        green:         '#50FA7B',
+        yellow:        '#F1FA8C',
+        blue:          '#BD93F9',
+        magenta:       '#FF79C6',
+        cyan:          '#8BE9FD',
+        white:         '#F8F8F2',
+        brightBlack:   '#6272A4',
+        brightRed:     '#FF6E6E',
+        brightGreen:   '#69FF94',
+        brightYellow:  '#FFFFA5',
+        brightBlue:    '#D6ACFF',
+        brightMagenta: '#FF92DF',
+        brightCyan:    '#A4FFFF',
+        brightWhite:   '#FFFFFF',
+      },
+    },
+    monokai: {
+      label: 'Monokai',
+      theme: {
+        background:    '#272822',
+        foreground:    '#F8F8F2',
+        cursor:        '#F8F8F2',
+        cursorAccent:  '#272822',
+        black:         '#272822',
+        red:           '#F92672',
+        green:         '#A6E22E',
+        yellow:        '#F4BF75',
+        blue:          '#66D9E8',
+        magenta:       '#AE81FF',
+        cyan:          '#A1EFE4',
+        white:         '#F8F8F2',
+        brightBlack:   '#75715E',
+        brightRed:     '#F92672',
+        brightGreen:   '#A6E22E',
+        brightYellow:  '#F4BF75',
+        brightBlue:    '#66D9E8',
+        brightMagenta: '#AE81FF',
+        brightCyan:    '#A1EFE4',
+        brightWhite:   '#F9F8F5',
+      },
+    },
   };
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -129,6 +204,16 @@
 
     document.getElementById('settings-save')
       .addEventListener('click', saveSettings);
+
+    // Wire up color pickers and live preview
+    _initColorPickers();
+
+    // Update preview whenever appearance fields change
+    ['setting-color-scheme', 'setting-font-family', 'setting-font-size', 'setting-line-height'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', _updatePreview);
+    });
+    document.getElementById('setting-font-size').addEventListener('input', _updatePreview);
 
     // Load settings on startup so terminals start with correct config
     loadSettings();
@@ -169,9 +254,22 @@
     _checked('setting-logging-enabled',   !!l.enabled);
     _val('setting-log-dir',          l.directory || 'logs');
     _val('setting-color-scheme',     a.color_scheme || 'deep_space');
+
+    // Populate color overrides — show scheme defaults if no override saved
+    const schemeName = a.color_scheme || 'deep_space';
+    const schemeTheme = (COLOR_SCHEMES[schemeName] || COLOR_SCHEMES.deep_space).theme;
+    _setColorField('setting-fg-hex', 'setting-fg-swatch-inner', a.foreground_override || schemeTheme.foreground);
+    _setColorField('setting-bg-hex', 'setting-bg-swatch-inner', a.background_override || schemeTheme.background);
+
+    _updatePreview();
   }
 
   async function saveSettings() {
+    const schemeName = _gval('setting-color-scheme');
+    const schemeTheme = (COLOR_SCHEMES[schemeName] || COLOR_SCHEMES.deep_space).theme;
+    const fgHex = _gval('setting-fg-hex').trim();
+    const bgHex = _gval('setting-bg-hex').trim();
+
     const s = {
       terminal: {
         font_family:       _gval('setting-font-family'),
@@ -188,7 +286,10 @@
         directory: _gval('setting-log-dir'),
       },
       appearance: {
-        color_scheme: _gval('setting-color-scheme'),
+        color_scheme:        schemeName,
+        // Only store override if it differs from scheme default
+        foreground_override: (_isValidHex(fgHex) && fgHex.toLowerCase() !== schemeTheme.foreground.toLowerCase()) ? fgHex : null,
+        background_override: (_isValidHex(bgHex) && bgHex.toLowerCase() !== schemeTheme.background.toLowerCase()) ? bgHex : null,
       },
     };
 
@@ -212,6 +313,106 @@
   function _checked(id, v) { const el = document.getElementById(id); if (el) el.checked = !!v; }
   function _gval(id)       { const el = document.getElementById(id); return el ? el.value : ''; }
   function _gchecked(id)   { const el = document.getElementById(id); return el ? el.checked : false; }
+
+  function _isValidHex(h) { return /^#[0-9A-Fa-f]{6}$/.test(h); }
+
+  function _setColorField(hexId, swatchInnerId, color) {
+    const hexEl    = document.getElementById(hexId);
+    const swatchEl = document.getElementById(swatchInnerId);
+    if (hexEl)    hexEl.value = color || '';
+    if (swatchEl) swatchEl.style.background = _isValidHex(color) ? color : '#888';
+  }
+
+  // Update the live preview pane from current form values
+  function _updatePreview() {
+    const previewEl = document.getElementById('settings-preview-terminal');
+    const previewPre = document.getElementById('settings-preview-text');
+    if (!previewEl || !previewPre) return;
+
+    const schemeName  = _gval('setting-color-scheme') || 'deep_space';
+    const schemeTheme = (COLOR_SCHEMES[schemeName] || COLOR_SCHEMES.deep_space).theme;
+    const fgHex = _gval('setting-fg-hex').trim();
+    const bgHex = _gval('setting-bg-hex').trim();
+
+    const fg = _isValidHex(fgHex) ? fgHex : schemeTheme.foreground;
+    const bg = _isValidHex(bgHex) ? bgHex : schemeTheme.background;
+
+    const fontFamily = _gval('setting-font-family') || 'JetBrains Mono, monospace';
+    const fontSize   = parseInt(_gval('setting-font-size'), 10) || 14;
+    const lineHeight = parseFloat(_gval('setting-line-height')) || 1.2;
+
+    previewEl.style.background = bg;
+    previewEl.style.color      = fg;
+    previewPre.style.fontFamily  = fontFamily;
+    previewPre.style.fontSize    = `${fontSize}px`;
+    previewPre.style.lineHeight  = String(lineHeight);
+    // Prompt colour from scheme blue
+    previewEl.querySelectorAll('.preview-prompt').forEach(el => {
+      el.style.color = schemeTheme.blue || '#89b4fa';
+    });
+  }
+
+  // Wire up color picker swatches and hex inputs
+  function _initColorPickers() {
+    // For each color field: swatch div opens a hidden <input type="color">
+    [
+      { swatchId: 'setting-fg-swatch', swatchInnerId: 'setting-fg-swatch-inner', hexId: 'setting-fg-hex', resetId: 'setting-fg-reset', schemeKey: 'foreground' },
+      { swatchId: 'setting-bg-swatch', swatchInnerId: 'setting-bg-swatch-inner', hexId: 'setting-bg-hex', resetId: 'setting-bg-reset', schemeKey: 'background' },
+    ].forEach(({ swatchId, swatchInnerId, hexId, resetId, schemeKey }) => {
+      const swatchEl      = document.getElementById(swatchId);
+      const swatchInnerEl = document.getElementById(swatchInnerId);
+      const hexEl         = document.getElementById(hexId);
+      const resetBtn      = document.getElementById(resetId);
+
+      if (!swatchEl || !hexEl) return;
+
+      // Create hidden native color input attached to the swatch
+      const colorInput = document.createElement('input');
+      colorInput.type = 'color';
+      colorInput.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;';
+      document.body.appendChild(colorInput);
+
+      swatchEl.addEventListener('click', () => {
+        colorInput.value = _isValidHex(hexEl.value) ? hexEl.value : '#888888';
+        colorInput.click();
+      });
+
+      colorInput.addEventListener('input', () => {
+        hexEl.value = colorInput.value.toUpperCase();
+        if (swatchInnerEl) swatchInnerEl.style.background = colorInput.value;
+        _updatePreview();
+      });
+
+      // Hex input: update swatch on valid input
+      hexEl.addEventListener('input', () => {
+        const v = hexEl.value.trim();
+        if (_isValidHex(v)) {
+          if (swatchInnerEl) swatchInnerEl.style.background = v;
+          _updatePreview();
+        }
+      });
+
+      // Reset: restore scheme default
+      resetBtn.addEventListener('click', () => {
+        const schemeName  = _gval('setting-color-scheme') || 'deep_space';
+        const schemeTheme = (COLOR_SCHEMES[schemeName] || COLOR_SCHEMES.deep_space).theme;
+        const defaultColor = schemeTheme[schemeKey];
+        hexEl.value = defaultColor;
+        if (swatchInnerEl) swatchInnerEl.style.background = defaultColor;
+        _updatePreview();
+      });
+    });
+
+    // When scheme changes, update swatch colours to scheme defaults (unless user has overridden)
+    document.getElementById('setting-color-scheme').addEventListener('change', () => {
+      const schemeName  = _gval('setting-color-scheme') || 'deep_space';
+      const schemeTheme = (COLOR_SCHEMES[schemeName] || COLOR_SCHEMES.deep_space).theme;
+      // Reset to new scheme defaults
+      _setColorField('setting-fg-hex', 'setting-fg-swatch-inner', schemeTheme.foreground);
+      _setColorField('setting-bg-hex', 'setting-bg-swatch-inner', schemeTheme.background);
+      _updatePreview();
+    });
+  }
 
   // Public API
   window.getColorScheme     = (name) => COLOR_SCHEMES[name] || COLOR_SCHEMES.deep_space;

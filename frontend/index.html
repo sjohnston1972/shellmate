@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MATE — Managed AI Terminal Environment</title>
 
-  <!-- Google Fonts — Space Grotesk, Inter, JetBrains Mono -->
+  <!-- Google Fonts — UI fonts + terminal monospace fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Fira+Code:wght@400;500&family=Source+Code+Pro:wght@400;500&family=Roboto+Mono:wght@400;500&family=Ubuntu+Mono:wght@400;700&family=Inconsolata:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
 
   <!-- xterm.js from CDN -->
@@ -69,30 +69,93 @@
     </header>
 
     <!-- ================================================================
-         MAIN AREA — terminal panes stacked here (CSS shows only one)
+         CONTENT SPLIT — terminal pane (left) + divider + chat pane (right)
     ================================================================ -->
-    <main id="main-area">
-      <!-- Welcome screen shown when no tabs are open -->
-      <div id="welcome-screen">
-        <div id="welcome-content">
-          <h1>MATE</h1>
-          <p class="welcome-tagline">Managed AI Terminal Environment</p>
-          <p class="welcome-sub">Connect to network devices via SSH or serial console</p>
-          <button id="btn-welcome-connect" class="btn-primary">
-            <span class="material-symbols-outlined">add_circle</span>
-            New Connection
-          </button>
-          <div class="shortcuts-hint">
-            <span class="shortcut-pill"><kbd>Ctrl</kbd>+<kbd>T</kbd> New tab</span>
-            <span class="shortcut-pill"><kbd>Ctrl</kbd>+<kbd>W</kbd> Close tab</span>
-            <span class="shortcut-pill"><kbd>Ctrl</kbd>+<kbd>1–9</kbd> Switch tab</span>
+    <div id="content-split">
+
+      <!-- Terminal pane -->
+      <main id="terminal-pane">
+        <!-- Welcome screen shown when no tabs are open -->
+        <div id="welcome-screen">
+          <div id="welcome-content">
+            <h1>MATE</h1>
+            <p class="welcome-tagline">Managed AI Terminal Environment</p>
+
+            <!-- Saved session quick-launch grid -->
+            <div id="welcome-profiles-grid"></div>
+
+            <button id="btn-welcome-connect" class="btn-primary">
+              <span class="material-symbols-outlined">add_circle</span>
+              New Connection
+            </button>
+            <div class="shortcuts-hint">
+              <span class="shortcut-pill"><kbd>Ctrl</kbd>+<kbd>T</kbd> New tab</span>
+              <span class="shortcut-pill"><kbd>Ctrl</kbd>+<kbd>W</kbd> Close tab</span>
+              <span class="shortcut-pill"><kbd>Ctrl</kbd>+<kbd>1–9</kbd> Switch tab</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Terminal containers are injected here by terminal.js -->
-      <div id="terminals-container"></div>
-    </main>
+        <!-- Terminal containers are injected here by terminal.js -->
+        <div id="terminals-container"></div>
+      </main>
+
+      <!-- Drag divider -->
+      <div id="split-divider" title="Drag to resize"></div>
+
+      <!-- AI Chat pane -->
+      <div id="chat-pane">
+
+        <!-- Header -->
+        <div id="chat-header">
+          <div id="chat-header-left">
+            <span class="material-symbols-outlined" style="font-size:16px;color:var(--primary)">smart_toy</span>
+            <span id="chat-title">MATE Chat</span>
+            <span id="chat-context-indicator" title="Current AI context"></span>
+          </div>
+          <div id="chat-header-right">
+            <select id="ai-backend-select" title="AI backend">
+              <option value="ollama">Ollama</option>
+              <option value="claude">Claude</option>
+            </select>
+            <button id="chat-clear" class="icon-btn" title="Clear chat">
+              <span class="material-symbols-outlined">delete_sweep</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Messages -->
+        <div id="chat-messages">
+          <div class="chat-welcome">
+            <span class="material-symbols-outlined" style="font-size:32px;color:var(--primary);opacity:0.4">smart_toy</span>
+            <p>Ask me anything about your network devices.</p>
+            <p class="chat-welcome-hint">I can see your terminal output and suggest commands.</p>
+          </div>
+        </div>
+
+        <!-- Quick chat buttons -->
+        <div id="quick-buttons-bar">
+          <div id="quick-buttons-list"></div>
+          <button id="quick-btn-add" title="Add quick button">
+            <span class="material-symbols-outlined">add</span>
+          </button>
+        </div>
+
+        <!-- Input area -->
+        <div id="chat-input-area">
+          <textarea
+            id="chat-input"
+            placeholder="Ask about your network&#8230; (Enter to send, Shift+Enter for newline)"
+            rows="1"
+          ></textarea>
+          <button id="chat-send" class="btn-primary" title="Send (Enter)">
+            <span class="material-symbols-outlined">send</span>
+          </button>
+        </div>
+
+      </div><!-- /#chat-pane -->
+
+    </div><!-- /#content-split -->
 
     <!-- ================================================================
          STATUS BAR
@@ -196,6 +259,19 @@
         <!-- Terminal Appearance -->
         <section class="settings-section">
           <h3 class="settings-section-title">Terminal Appearance</h3>
+
+          <!-- Live preview -->
+          <div class="settings-preview">
+            <div class="settings-preview-bar">Preview</div>
+            <div class="settings-preview-terminal" id="settings-preview-terminal">
+              <pre id="settings-preview-text"><span class="preview-prompt">switch01#</span> show ip interface brief
+Interface     IP-Address    OK? Method Status   Protocol
+GigEth0/1     10.1.1.1      YES manual up       up
+GigEth0/2     unassigned    YES unset  down     down
+<span class="preview-prompt">switch01#</span> <span class="preview-cursor"> </span></pre>
+            </div>
+          </div>
+
           <div class="setting-row">
             <label class="setting-label" for="setting-color-scheme">Color Scheme</label>
             <select id="setting-color-scheme" class="setting-input">
@@ -203,13 +279,40 @@
               <option value="solarized_dark">Solarized Dark</option>
               <option value="nord">Nord</option>
               <option value="one_dark">One Dark</option>
+              <option value="gruvbox">Gruvbox Dark</option>
+              <option value="dracula">Dracula</option>
+              <option value="monokai">Monokai</option>
             </select>
+          </div>
+          <div class="setting-row">
+            <label class="setting-label">Font Color</label>
+            <div class="setting-color-wrap">
+              <div class="setting-color-swatch" id="setting-fg-swatch" title="Click to pick colour">
+                <div class="setting-color-swatch-inner" id="setting-fg-swatch-inner"></div>
+              </div>
+              <input type="text" id="setting-fg-hex" class="setting-color-hex" placeholder="#E5E2E1" maxlength="7" />
+              <button class="setting-color-reset" id="setting-fg-reset" title="Reset to scheme default">Reset</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label class="setting-label">Background Color</label>
+            <div class="setting-color-wrap">
+              <div class="setting-color-swatch" id="setting-bg-swatch" title="Click to pick colour">
+                <div class="setting-color-swatch-inner" id="setting-bg-swatch-inner"></div>
+              </div>
+              <input type="text" id="setting-bg-hex" class="setting-color-hex" placeholder="#0E0E0E" maxlength="7" />
+              <button class="setting-color-reset" id="setting-bg-reset" title="Reset to scheme default">Reset</button>
+            </div>
           </div>
           <div class="setting-row">
             <label class="setting-label" for="setting-font-family">Font Family</label>
             <select id="setting-font-family" class="setting-input">
               <option value="JetBrains Mono, monospace">JetBrains Mono</option>
               <option value="Fira Code, monospace">Fira Code</option>
+              <option value="Source Code Pro, monospace">Source Code Pro</option>
+              <option value="Roboto Mono, monospace">Roboto Mono</option>
+              <option value="Ubuntu Mono, monospace">Ubuntu Mono</option>
+              <option value="Inconsolata, monospace">Inconsolata</option>
               <option value="Cascadia Code, monospace">Cascadia Code</option>
               <option value="Consolas, monospace">Consolas</option>
               <option value="Courier New, monospace">Courier New</option>
@@ -348,6 +451,7 @@
   <script src="/static/js/connections.js"></script>
   <script src="/static/js/tabs.js"></script>
   <script src="/static/js/terminal.js"></script>
+  <script src="/static/js/chat.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/logs.js"></script>
   <script>

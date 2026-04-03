@@ -73,7 +73,7 @@
 
     const closeBtn = document.createElement('button');
     closeBtn.className = 'tab-close';
-    closeBtn.textContent = '×';
+    closeBtn.textContent = 'x';
     closeBtn.title = 'Close tab (Ctrl+W)';
 
     tabEl.appendChild(dot);
@@ -90,6 +90,7 @@
       terminalInstance: termData.terminal,
       fitAddon:         termData.fitAddon,
       websocket:        termData.websocket,
+      getBufferLines:   termData.getBufferLines,
       isConnected:      true,
       containerId:      termData.containerId,
       tabEl,
@@ -110,6 +111,11 @@
       // Find current index at click time (array may have shifted)
       const idx = tabs.findIndex(t => t.sessionId === session_id);
       if (idx !== -1) closeTab(idx);
+    });
+
+    // Right-click: show context menu
+    tabEl.addEventListener('contextmenu', (e) => {
+      _showTabContextMenu(e, session_id);
     });
 
     // Hide the welcome screen now that we have a tab
@@ -139,6 +145,9 @@
     });
 
     activeTabIndex = index;
+
+    // Notify chat.js (and anything else) that the active tab changed
+    window.dispatchEvent(new CustomEvent('mate:tab-switched', { detail: tabs[index] }));
 
     // Let xterm.js recalculate dimensions after becoming visible
     const activeTab = tabs[index];
@@ -261,9 +270,8 @@
     const stateText = active.isConnected ? 'Connected' : 'Disconnected';
     connEl.textContent = `SSH: ${active.label} | ${stateText}`;
 
-    // Buffer line count comes from the terminal's rows as a rough proxy;
-    // accurate count will come from the backend in Phase 2
-    bufferEl.textContent = 'Buffer: —';
+    const lines = active.getBufferLines ? active.getBufferLines() : 0;
+    bufferEl.textContent = `Buffer: ${lines.toLocaleString()}L`;
   }
 
   // -------------------------------------------------------------------------
@@ -296,6 +304,118 @@
         e.preventDefault();
         switchToTab(targetIndex);
       }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Tab right-click context menu
+  // -------------------------------------------------------------------------
+
+  let _ctxMenu      = null;
+  let _ctxSessionId = null;
+
+  /**
+   * Show the context menu near the cursor for a given session.
+   */
+  function _showTabContextMenu(e, sessionId) {
+    e.preventDefault();
+    _hideTabContextMenu();
+    _ctxSessionId = sessionId;
+
+    _ctxMenu = document.createElement('div');
+    _ctxMenu.className = 'tab-context-menu';
+    _ctxMenu.innerHTML = `
+      <button data-action="clear">
+        <span class="material-symbols-outlined">backspace</span>
+        Clear console
+      </button>
+      <button data-action="copy">
+        <span class="material-symbols-outlined">content_copy</span>
+        Copy history
+      </button>
+      <div class="ctx-sep"></div>
+      <button data-action="duplicate">
+        <span class="material-symbols-outlined">tab_duplicate</span>
+        Duplicate session
+      </button>
+    `;
+
+    document.body.appendChild(_ctxMenu);
+
+    // Position near cursor, clamped to viewport
+    const x = Math.min(e.clientX, window.innerWidth  - 200);
+    const y = Math.min(e.clientY, window.innerHeight - 160);
+    _ctxMenu.style.left = `${x}px`;
+    _ctxMenu.style.top  = `${y}px`;
+
+    _ctxMenu.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('[data-action]');
+      if (!btn) return;
+      const tab = tabs.find(t => t.sessionId === _ctxSessionId);
+      if (tab) {
+        switch (btn.dataset.action) {
+          case 'clear':     _clearConsole(tab);       break;
+          case 'copy':      _copyHistory(tab);        break;
+          case 'duplicate': _duplicateSession(tab);   break;
+        }
+      }
+      _hideTabContextMenu();
+    });
+
+    // Dismiss on outside click or Escape
+    setTimeout(() => {
+      document.addEventListener('click',   _hideTabContextMenu, { once: true });
+      document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') _hideTabContextMenu();
+      }, { once: true });
+    }, 0);
+  }
+
+  function _hideTabContextMenu() {
+    if (_ctxMenu) { _ctxMenu.remove(); _ctxMenu = null; }
+  }
+
+  /** Clear the xterm.js viewport and scrollback for this tab. */
+  function _clearConsole(tab) {
+    try { tab.terminalInstance.clear(); } catch (_) {}
+  }
+
+  /** Copy all lines from the terminal buffer to clipboard. */
+  function _copyHistory(tab) {
+    try {
+      const buf   = tab.terminalInstance.buffer.active;
+      const lines = [];
+      for (let i = 0; i < buf.length; i++) {
+        const line = buf.getLine(i);
+        if (line) lines.push(line.translateToString(true));
+      }
+      // Trim trailing blank lines
+      while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+      navigator.clipboard.writeText(lines.join('\n')).then(() => {
+        window._showCopyToast && window._showCopyToast();
+      }).catch(() => {});
+    } catch (err) {
+      console.error('Could not copy terminal history:', err);
+    }
+  }
+
+  /** Open the connection dialog pre-filled with this session's details. */
+  async function _duplicateSession(tab) {
+    try {
+      const res      = await fetch('/api/sessions');
+      const sessions = await res.json();
+      const s        = sessions.find(s => s.session_id === tab.sessionId);
+      if (s && typeof window.showConnectionDialog === 'function') {
+        window.showConnectionDialog({
+          label:           s.display_label || '',
+          hostname:        s.hostname      || '',
+          port:            s.port          || 22,
+          username:        s.username      || '',
+          connection_type: s.connection_type || 'ssh',
+        });
+      }
+    } catch (err) {
+      console.error('Could not get session for duplicate:', err);
     }
   }
 

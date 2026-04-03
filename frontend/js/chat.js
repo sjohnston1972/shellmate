@@ -1,0 +1,621 @@
+/**
+ * chat.js — AI chat panel for MATE.
+ *
+ * Manages the split-screen chat pane: message rendering, WebSocket to
+ * /ws/chat, backend selector, streaming token display, and command
+ * suggestion blocks.
+ *
+ * Context commands:
+ *   /context all     — include all open session buffers
+ *   /context 1-9     — include a specific tab's buffer
+ */
+(function () {
+  'use strict';
+
+  // -----------------------------------------------------------------------
+  // State
+  // -----------------------------------------------------------------------
+  let chatWs          = null;
+  let isStreaming     = false;
+  let currentBackend  = 'ollama'; // overridden by settings on load
+  let contextMode     = 'active'; // 'active' | 'all' | '1'..'9'
+  let streamingBubble = null;     // the <div> currently being filled
+  let _outputWatcher  = null;     // active command output watcher
+
+  const QUICK_BUTTONS_KEY  = 'mate:quick-buttons';
+  const DEFAULT_QUICK_BTNS = [
+    'Thoughts on this?',
+    'What\'s wrong here?',
+    'Any issues?',
+    'Summarize',
+    'Next steps?',
+  ];
+
+  // -----------------------------------------------------------------------
+  // DOM refs
+  // -----------------------------------------------------------------------
+  let messagesEl, inputEl, sendBtn, backendSelect, contextIndicator;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    messagesEl       = document.getElementById('chat-messages');
+    inputEl          = document.getElementById('chat-input');
+    sendBtn          = document.getElementById('chat-send');
+    backendSelect    = document.getElementById('ai-backend-select');
+    contextIndicator = document.getElementById('chat-context-indicator');
+
+    // Load backend preference from settings
+    const s = window.mateSettings || {};
+    const savedBackend = s.appearance && s.appearance.ai_backend;
+    if (savedBackend) {
+      currentBackend = savedBackend;
+      backendSelect.value = savedBackend;
+    }
+
+    // Wire up events
+    sendBtn.addEventListener('click', sendMessage);
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+
+    // Auto-resize textarea as user types
+    inputEl.addEventListener('input', () => {
+      inputEl.style.height = 'auto';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+    });
+
+    backendSelect.addEventListener('change', () => {
+      currentBackend = backendSelect.value;
+    });
+
+    document.getElementById('chat-clear').addEventListener('click', clearChat);
+    document.getElementById('quick-btn-add').addEventListener('click', addQuickButton);
+
+    // Render quick buttons from localStorage
+    renderQuickButtons();
+
+    // Set up draggable divider
+    initDivider();
+
+    // Connect WebSocket
+    connectChatWs();
+
+    // Update context indicator when tab switches
+    window.addEventListener('mate:tab-switched', (e) => updateContextIndicator(e.detail));
+  });
+
+  // -----------------------------------------------------------------------
+  // WebSocket
+  // -----------------------------------------------------------------------
+
+  function connectChatWs() {
+    const url = `ws://${window.location.host}/ws/chat`;
+    chatWs = new WebSocket(url);
+
+    chatWs.addEventListener('message', handleWsMessage);
+    chatWs.addEventListener('close', () => {
+      // Reconnect after a delay
+      setTimeout(connectChatWs, 2000);
+    });
+    chatWs.addEventListener('error', () => {});
+  }
+
+  function handleWsMessage(event) {
+    let msg;
+    try { msg = JSON.parse(event.data); } catch (_) { return; }
+
+    if (msg.type === 'chunk') {
+      appendChunk(msg.data);
+    } else if (msg.type === 'done') {
+      finishStreaming();
+    } else if (msg.type === 'error') {
+      finishStreaming();
+      appendErrorBubble(msg.message || 'Unknown error');
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Sending messages
+  // -----------------------------------------------------------------------
+
+  function sendMessage() {
+    if (isStreaming) return;
+    const text = inputEl.value.trim();
+    if (!text) return;
+
+    // Parse context commands
+    let message = text;
+    let mode = contextMode;
+
+    const ctxMatch = text.match(/^\/context\s+(all|\d+)\s*/i);
+    if (ctxMatch) {
+      mode = ctxMatch[1].toLowerCase();
+      message = text.slice(ctxMatch[0].length).trim();
+      if (!message) {
+        // No message body — just set the context mode for future messages
+        inputEl.value = '';
+        contextMode = mode;
+        updateContextIndicator();
+        return;
+      }
+    }
+
+    // Get active session id from tabs.js
+    const activeTab = typeof window.getActiveTab === 'function' ? window.getActiveTab() : null;
+    const sessionId = activeTab ? activeTab.sessionId : null;
+
+    // Render user bubble
+    appendUserBubble(text);
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+
+    // Start streaming AI bubble
+    startStreamingBubble();
+    isStreaming = true;
+    sendBtn.disabled = true;
+
+    if (chatWs && chatWs.readyState === WebSocket.OPEN) {
+      chatWs.send(JSON.stringify({
+        message,
+        session_id:   sessionId,
+        backend:      currentBackend,
+        context_mode: mode,
+      }));
+    } else {
+      finishStreaming();
+      appendErrorBubble('Not connected to server. Reconnecting\u2026');
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Message rendering
+  // -----------------------------------------------------------------------
+
+  function appendUserBubble(text) {
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble chat-bubble-user';
+    bubble.textContent = text;
+    messagesEl.appendChild(bubble);
+    scrollToBottom(true);
+  }
+
+  function startStreamingBubble(auto = false) {
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble chat-bubble-ai streaming';
+    const badge = auto ? '<span class="chat-auto-badge">auto</span>' : '';
+    bubble.innerHTML = `${badge}<span class="chat-thinking"><span></span><span></span><span></span></span>`;
+    messagesEl.appendChild(bubble);
+    streamingBubble = bubble;
+    scrollToBottom(true);
+  }
+
+  function appendChunk(text) {
+    if (!streamingBubble) return;
+    // Remove thinking indicator on first chunk
+    const thinking = streamingBubble.querySelector('.chat-thinking');
+    if (thinking) {
+      thinking.remove();
+      streamingBubble.dataset.raw = '';
+      // Create a lightweight streaming text element — no command block parsing mid-stream
+      const streamEl = document.createElement('div');
+      streamEl.className = 'chat-text chat-stream-live';
+      streamingBubble.appendChild(streamEl);
+    }
+    streamingBubble.dataset.raw = (streamingBubble.dataset.raw || '') + text;
+    // Just update the text in-place — no full DOM rebuild on every chunk
+    const streamEl = streamingBubble.querySelector('.chat-stream-live');
+    if (streamEl) streamEl.innerHTML = formatText(streamingBubble.dataset.raw);
+    scrollToBottom();
+  }
+
+  function finishStreaming() {
+    if (streamingBubble) {
+      streamingBubble.classList.remove('streaming');
+      // Full parse: replaces the streaming text with proper command blocks etc.
+      if (streamingBubble.dataset.raw) {
+        renderBubbleContent(streamingBubble);
+        wireCommandBlocks(streamingBubble);
+      }
+      streamingBubble = null;
+    }
+    isStreaming = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+    scrollToBottom();
+  }
+
+  function sendSilent(message, sessionId) {
+    if (isStreaming) return;
+    if (!chatWs || chatWs.readyState !== WebSocket.OPEN) return;
+
+    const activeTab = typeof window.getActiveTab === 'function' ? window.getActiveTab() : null;
+    const sid = sessionId || (activeTab ? activeTab.sessionId : null);
+
+    // No user bubble — just start the AI bubble with a subtle "auto" badge
+    startStreamingBubble(true);
+    isStreaming = true;
+    sendBtn.disabled = true;
+
+    chatWs.send(JSON.stringify({
+      message,
+      session_id:   sid,
+      backend:      currentBackend,
+      context_mode: contextMode,
+    }));
+  }
+
+  function appendErrorBubble(msg) {
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble chat-bubble-error';
+    bubble.textContent = '\u26a0 ' + msg;
+    messagesEl.appendChild(bubble);
+    scrollToBottom(true);
+  }
+
+  // -----------------------------------------------------------------------
+  // Markdown-lite + command block rendering
+  // -----------------------------------------------------------------------
+
+  function renderBubbleContent(bubble) {
+    let raw = bubble.dataset.raw || '';
+
+    // Defensive normalisation — handle malformed tags the AI produces:
+    //   "### [SUGGEST_CMD]cmd[/SUGGEST_CMD]"  → "[SUGGEST_CMD]cmd[/SUGGEST_CMD]"  (heading prefix)
+    //   "### SUGGEST_CMD]cmd[/SUGGEST_CMD]"   → "[SUGGEST_CMD]cmd[/SUGGEST_CMD]"  (heading + missing [)
+    //   "SUGGEST_CMD]cmd[/SUGGEST_CMD]"        → "[SUGGEST_CMD]cmd[/SUGGEST_CMD]"  (missing opening [)
+    //   "[SUGGEST_CMD]cmd[/[SUGGEST_CMD]"      → "[SUGGEST_CMD]cmd[/SUGGEST_CMD]"  (extra [ in closing tag)
+    raw = raw.replace(/^#{1,6}\s*\[?(SUGGEST_CMD|ADD_CMD)\]/gm, '[$1]');  // strip heading prefix
+    raw = raw.replace(/(?<!\[)(SUGGEST_CMD|ADD_CMD)\]/g, '[$1]');          // fix missing opening [
+    raw = raw.replace(/\[\/\[+(SUGGEST_CMD|ADD_CMD)\]/g, '[/$1]');         // fix extra [ in closing tag
+
+    // Split on [SUGGEST_CMD]...[/SUGGEST_CMD] or [ADD_CMD]...[/ADD_CMD] blocks
+    const parts = raw.split(/(\[(?:SUGGEST_CMD|ADD_CMD)\][\s\S]*?\[\/(?:SUGGEST_CMD|ADD_CMD)\])/g);
+    bubble.innerHTML = '';
+
+    parts.forEach(part => {
+      const cmdMatch = part.match(/^\[(?:SUGGEST_CMD|ADD_CMD)\]([\s\S]*?)\[\/(?:SUGGEST_CMD|ADD_CMD)\]$/);
+      if (cmdMatch) {
+        bubble.appendChild(buildCommandBlock(cmdMatch[1].trim()));
+      } else if (part) {
+        const textNode = document.createElement('div');
+        textNode.className = 'chat-text';
+        textNode.innerHTML = formatText(part);
+        bubble.appendChild(textNode);
+      }
+    });
+  }
+
+  function formatText(text) {
+    // Minimal markdown: fenced code blocks, inline code, bold
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/```([\s\S]*?)```/g, '<pre class="chat-code-block"><code>$1</code></pre>')
+      .replace(/`([^`]+)`/g, '<code class="chat-inline-code">$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+  }
+
+  function buildCommandBlock(cmd) {
+    const wrap = document.createElement('div');
+    wrap.className = 'cmd-block';
+    wrap.innerHTML = `
+      <pre class="cmd-block-text">${escHtml(cmd)}</pre>
+      <div class="cmd-block-actions">
+        <button class="cmd-send btn-primary" title="Send to active terminal">
+          <span class="material-symbols-outlined">send</span> Send
+        </button>
+        <button class="cmd-edit btn-secondary" title="Edit before sending">
+          <span class="material-symbols-outlined">edit</span>
+        </button>
+      </div>
+    `;
+    return wrap;
+  }
+
+  function wireCommandBlocks(bubble) {
+    bubble.querySelectorAll('.cmd-block').forEach(block => {
+      const pre      = block.querySelector('.cmd-block-text');
+      const sendBtn2 = block.querySelector('.cmd-send');
+      const editBtn  = block.querySelector('.cmd-edit');
+
+      if (sendBtn2 && !sendBtn2.dataset.wired) {
+        sendBtn2.dataset.wired = '1';
+        sendBtn2.addEventListener('click', () => injectCommand(pre.textContent));
+      }
+
+      if (editBtn && !editBtn.dataset.wired) {
+        editBtn.dataset.wired = '1';
+        editBtn.addEventListener('click', () => {
+          pre.contentEditable = 'true';
+          pre.focus();
+          // Select all text in the editable pre
+          const range = document.createRange();
+          range.selectNodeContents(pre);
+          window.getSelection().removeAllRanges();
+          window.getSelection().addRange(range);
+          editBtn.style.display = 'none';
+        });
+      }
+    });
+  }
+
+  function injectCommand(cmd) {
+    const activeTab = typeof window.getActiveTab === 'function' ? window.getActiveTab() : null;
+    if (!activeTab || !activeTab.websocket) {
+      appendErrorBubble('No active terminal session to send command to.');
+      return;
+    }
+    const ws = activeTab.websocket;
+    if (ws.readyState !== WebSocket.OPEN) {
+      appendErrorBubble('Terminal session is not connected.');
+      return;
+    }
+    // Strip surrounding backticks or quotes the AI may have included
+    const clean = cmd.replace(/^[`'"]+|[`'"]+$/g, '').trim();
+    // Send command + carriage return to the terminal WebSocket
+    ws.send(JSON.stringify({ type: 'input', data: clean + '\r' }));
+
+    // Watch for the command output and auto-feed it back to the AI
+    const baselineLines = activeTab.getBufferLines ? activeTab.getBufferLines() : 0;
+    startOutputWatcher(clean, baselineLines, activeTab.sessionId);
+  }
+
+  // -----------------------------------------------------------------------
+  // Output watcher — feeds command output back to the AI automatically
+  // -----------------------------------------------------------------------
+
+  function startOutputWatcher(cmd, baselineLines, sessionId) {
+    // Cancel any existing watcher
+    if (_outputWatcher) {
+      _outputWatcher.cancel();
+    }
+
+    let collected  = '';
+    let idleTimer  = null;
+    const IDLE_MS  = 2500; // wait this long after last output chunk before sending
+
+    function onOutput(e) {
+      if (e.detail.sessionId !== sessionId) return;
+      collected += e.detail.data;
+      resetIdle();
+    }
+
+    function resetIdle() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(flush, IDLE_MS);
+    }
+
+    function flush() {
+      cleanup();
+      const output = collected.trim();
+      if (!output) return;
+
+      // Strip ANSI escape codes
+      const clean = output.replace(/\x1b\[[0-9;]*[mGKHF]/g, '').trim();
+      if (!clean) return;
+
+      // Send silently — no user bubble, AI responds as if it observed the output itself
+      const silentMsg = `The user just ran \`${cmd}\` in the terminal and this output appeared:\n\`\`\`\n${clean}\n\`\`\`\nAnalyse it naturally, as if you are watching the terminal in real time. Do not say "you ran" or reference receiving a message — just respond as an engineer who can see the screen.`;
+
+      setTimeout(() => sendSilent(silentMsg, sessionId), 300);
+    }
+
+    function cleanup() {
+      window.removeEventListener('mate:terminal-output', onOutput);
+      clearTimeout(idleTimer);
+      _outputWatcher = null;
+    }
+
+    window.addEventListener('mate:terminal-output', onOutput);
+    // Safety timeout — give up after 30s regardless
+    idleTimer = setTimeout(flush, 30000);
+
+    _outputWatcher = { cancel: cleanup };
+  }
+
+  // -----------------------------------------------------------------------
+  // Quick chat buttons
+  // -----------------------------------------------------------------------
+
+  function loadQuickButtons() {
+    try {
+      const stored = localStorage.getItem(QUICK_BUTTONS_KEY);
+      return stored ? JSON.parse(stored) : [...DEFAULT_QUICK_BTNS];
+    } catch (_) {
+      return [...DEFAULT_QUICK_BTNS];
+    }
+  }
+
+  function saveQuickButtons(btns) {
+    localStorage.setItem(QUICK_BUTTONS_KEY, JSON.stringify(btns));
+  }
+
+  function renderQuickButtons() {
+    const list = document.getElementById('quick-buttons-list');
+    if (!list) return;
+    const btns = loadQuickButtons();
+    list.innerHTML = '';
+
+    btns.forEach((label, idx) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'quick-btn-wrap';
+
+      const btn = document.createElement('button');
+      btn.className = 'quick-btn';
+      btn.textContent = label;
+      btn.title = 'Click to use · Right-click to edit';
+
+      // Left-click: send immediately
+      btn.addEventListener('click', () => {
+        inputEl.value = label;
+        sendMessage();
+      });
+
+      // Right-click: inline edit
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        startInlineEdit(btn, idx);
+      });
+
+      const del = document.createElement('button');
+      del.className = 'quick-btn-del';
+      del.innerHTML = '<span class="material-symbols-outlined">close</span>';
+      del.title = 'Remove';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const current = loadQuickButtons();
+        current.splice(idx, 1);
+        saveQuickButtons(current);
+        renderQuickButtons();
+      });
+
+      wrap.appendChild(btn);
+      wrap.appendChild(del);
+      list.appendChild(wrap);
+    });
+  }
+
+  function startInlineEdit(btn, idx) {
+    const original = btn.textContent;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'quick-btn-edit-input';
+    input.value = original;
+
+    btn.replaceWith(input);
+    input.focus();
+    input.select();
+
+    function commit() {
+      const val = input.value.trim();
+      if (val && val !== original) {
+        const current = loadQuickButtons();
+        current[idx] = val;
+        saveQuickButtons(current);
+      }
+      renderQuickButtons();
+    }
+
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      if (e.key === 'Escape') { renderQuickButtons(); }
+    });
+  }
+
+  function addQuickButton() {
+    const current = loadQuickButtons();
+    current.push('New question?');
+    saveQuickButtons(current);
+    renderQuickButtons();
+    // Auto-open edit on the new button
+    const list = document.getElementById('quick-buttons-list');
+    if (!list) return;
+    const lastBtn = list.querySelectorAll('.quick-btn');
+    const last = lastBtn[lastBtn.length - 1];
+    if (last) startInlineEdit(last, current.length - 1);
+  }
+
+  // -----------------------------------------------------------------------
+  // Draggable split divider
+  // -----------------------------------------------------------------------
+
+  function initDivider() {
+    const divider  = document.getElementById('split-divider');
+    const chatPane = document.getElementById('chat-pane');
+    if (!divider || !chatPane) return;
+
+    let dragging   = false;
+    let startX     = 0;
+    let startWidth = 0;
+
+    divider.addEventListener('mousedown', (e) => {
+      dragging   = true;
+      startX     = e.clientX;
+      startWidth = chatPane.offsetWidth;
+      divider.classList.add('dragging');
+      document.body.style.cursor     = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const delta    = startX - e.clientX;   // moving left = chat gets bigger
+      const newWidth = Math.max(260, Math.min(window.innerWidth * 0.6, startWidth + delta));
+      chatPane.style.width = newWidth + 'px';
+      chatPane.style.flex  = 'none';
+      // Refit active terminal
+      if (typeof window.getActiveTab === 'function') {
+        const tab = window.getActiveTab();
+        if (tab && tab.fitAddon) {
+          requestAnimationFrame(() => { try { tab.fitAddon.fit(); } catch (_) {} });
+        }
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      divider.classList.remove('dragging');
+      document.body.style.cursor     = '';
+      document.body.style.userSelect = '';
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Context indicator
+  // -----------------------------------------------------------------------
+
+  function updateContextIndicator(tab) {
+    if (!contextIndicator) return;
+    const activeTab = tab || (typeof window.getActiveTab === 'function' ? window.getActiveTab() : null);
+    if (activeTab) {
+      contextIndicator.textContent = activeTab.label || 'active session';
+      contextIndicator.title       = `AI context: ${activeTab.label}`;
+    } else {
+      contextIndicator.textContent = 'no session';
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Helpers
+  // -----------------------------------------------------------------------
+
+  function clearChat() {
+    messagesEl.innerHTML = '';
+    streamingBubble      = null;
+    isStreaming          = false;
+    sendBtn.disabled     = false;
+  }
+
+  /**
+   * Scroll the messages pane to the bottom.
+   * @param {boolean} force - If true, always scroll (used when a new bubble appears).
+   *                          If false (default), only scroll when the user is already
+   *                          near the bottom — preserves scroll position while reading.
+   */
+  function scrollToBottom(force = false) {
+    if (force) {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return;
+    }
+    const distFromBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
+    if (distFromBottom < 120) {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+  }
+
+  function escHtml(s) {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  // Expose for test access and for settings.js to update the backend selector
+  window._chatInjectCommand  = injectCommand;
+  window._chatSend           = sendMessage;
+  window._chatSetBackend     = (b) => { currentBackend = b; if (backendSelect) backendSelect.value = b; };
+
+})();

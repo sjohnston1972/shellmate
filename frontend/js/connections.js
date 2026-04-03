@@ -20,6 +20,9 @@
     connectSpinner  = document.getElementById('btn-connect-spinner');
     profilesList    = document.getElementById('saved-profiles-list');
 
+    // Populate welcome screen quick-launch grid on startup
+    renderWelcomeProfiles();
+
     document.getElementById('btn-new-tab')
       .addEventListener('click', showConnectionDialog);
 
@@ -55,13 +58,17 @@
   /**
    * Show the connection modal, reset the form, and load saved profiles.
    */
-  function showConnectionDialog() {
+  function showConnectionDialog(prefill) {
     clearError();
     form.reset();
     document.getElementById('field-port').value = '22';
+    if (prefill) fillFromProfile(prefill);
     loadProfiles();
     overlay.classList.remove('hidden');
-    setTimeout(() => document.getElementById('field-hostname').focus(), 50);
+    // Focus password if prefilled (user only needs to enter password), else hostname
+    setTimeout(() => {
+      document.getElementById(prefill ? 'field-password' : 'field-hostname').focus();
+    }, 50);
   }
 
   /**
@@ -87,6 +94,30 @@
     }
   }
 
+  async function renderWelcomeProfiles() {
+    const grid = document.getElementById('welcome-profiles-grid');
+    if (!grid) return;
+    try {
+      const res = await fetch('/api/profiles');
+      const profiles = await res.json();
+      grid.innerHTML = '';
+      profiles.forEach(p => {
+        const card = document.createElement('button');
+        card.className = 'welcome-profile-card';
+        card.title = `${p.hostname}:${p.port} (${p.connection_type.toUpperCase()})`;
+        card.innerHTML = `
+          <span class="material-symbols-outlined welcome-profile-icon">
+            ${p.connection_type === 'serial' ? 'cable' : 'terminal'}
+          </span>
+          <span class="welcome-profile-name">${p.name}</span>
+          <span class="welcome-profile-host">${p.hostname}</span>
+        `;
+        card.addEventListener('click', () => showConnectionDialog(p));
+        grid.appendChild(card);
+      });
+    } catch (e) { /* silently skip if API unavailable */ }
+  }
+
   function renderProfiles(profiles) {
     if (!profilesList) return;
     profilesList.innerHTML = '';
@@ -99,13 +130,13 @@
       chip.className = 'profile-chip';
       chip.innerHTML = `
         <span class="profile-chip-label" title="${p.hostname}:${p.port}">${p.name}</span>
-        <button class="profile-chip-delete" data-id="${p.id}" title="Delete">&times;</button>
+        <button class="profile-chip-delete" data-id="${p.id}" title="Delete">x</button>
       `;
       chip.querySelector('.profile-chip-label').addEventListener('click', () => fillFromProfile(p));
       chip.querySelector('.profile-chip-delete').addEventListener('click', async (e) => {
         e.stopPropagation();
         await fetch(`/api/profiles/${p.id}`, { method: 'DELETE' });
-        await loadProfiles();
+        await loadProfiles(); renderWelcomeProfiles();
       });
       profilesList.appendChild(chip);
     });
