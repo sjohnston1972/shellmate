@@ -1,0 +1,333 @@
+# MATE — Managed AI Terminal Environment
+
+## Project overview
+
+MATE is a split-screen, multi-tab network terminal with a built-in agentic AI copilot. The left pane is a fully functional terminal (like PuTTY) for connecting to network devices via SSH or serial console, with tabs for multiple simultaneous sessions. The right pane is an AI chat interface that can see everything happening in the active terminal session — and can be made aware of all open sessions — to have a conversation about what's on screen. The AI can also suggest commands which the user can approve and inject into the live terminal session with a single click.
+
+Multi-tab is a core architectural feature, not a bolt-on. Every session has its own connection, terminal instance, and session buffer, all identified by a unique session ID. The tab bar, session management, and per-tab state must be built from Phase 1 onwards.
+
+This is a tool built for network engineers working with Cisco switches, routers, firewalls and similar devices. The user is not a developer — the UI should be clean, intuitive and require zero configuration to get started.
+
+## Architecture
+
+MATE is a two-layer application:
+
+1. **Python backend** (FastAPI) — handles SSH/serial connections, session buffering, AI API routing, and the command approval pipeline. Communicates with the frontend over WebSockets.
+2. **Web frontend** (HTML/JS/CSS) — served locally by the backend. Uses xterm.js for the terminal emulator and a custom chat panel for the AI. Runs in the user's browser at `http://localhost:8765`.
+
+The backend is the brain. The frontend is the face. All connection logic, AI calls and session state live in Python.
+
+### Data flow
+
+Every connection lives inside a **session**, identified by a unique session ID (UUID). Tabs map 1:1 to sessions. The frontend tracks which tab is active and routes keystrokes/chat to the correct session.
+
+```
+User keystroke → browser WebSocket (with session_id) → FastAPI → correct Paramiko/pyserial session → network device
+Device output  → Paramiko/pyserial → FastAPI → WebSocket (with session_id) → correct xterm.js tab
+                                             → session buffer for that session_id (stored in memory)
+
+User chats with AI → browser WebSocket → FastAPI → AI router (receives active session_id + buffer)
+AI reads session buffer for active tab → generates response → WebSocket → chat pane
+AI can also be given buffers from ALL open sessions if the user asks (e.g., "compare the config on tab 1 vs tab 2")
+AI suggests command → displayed as clickable button in chat pane
+User clicks approve → command sent via WebSocket with session_id → FastAPI → injected into correct session
+```
+
+## Tech stack
+
+### Backend (Python)
+- **FastAPI** — async web framework, serves the frontend and handles WebSocket connections
+- **uvicorn** — ASGI server to run FastAPI
+- **paramiko** — SSH client library (what Netmiko is built on)
+- **pyserial** — serial port communication for console cables
+- **httpx** — async HTTP client for calling Claude API and Ollama API
+- **python-dotenv** — load configuration from .env file
+
+### Frontend (HTML/JS/CSS)
+- **xterm.js** — terminal emulator component (load from CDN)
+- **xterm-addon-fit** — auto-resize terminal to container (load from CDN)
+- **xterm-addon-web-links** — clickable URLs in terminal output (load from CDN)
+- Vanilla JS — no frameworks needed for the chat panel and UI chrome
+
+### AI backends (user-selectable)
+- **Claude API** (api.anthropic.com) — for complex reasoning, troubleshooting, deep analysis
+- **Ollama** (localhost:11434) — for fast local inference, lower cost, privacy
+
+## Project structure
+
+```
+mate/
+├── CLAUDE.md                  # This file — project spec and instructions
+├── .env.example               # Template for configuration
+├── .env                       # User's local config (gitignored)
+├── requirements.txt           # Python dependencies
+├── run.py                     # Entry point — starts the server and opens browser
+├── backend/
+│   ├── __init__.py
+│   ├── app.py                 # FastAPI application, routes, WebSocket handlers
+│   ├── connections/
+│   │   ├── __init__.py
+│   │   ├── manager.py         # Connection lifecycle — creates, tracks and destroys sessions by ID
+│   │   ├── ssh_handler.py     # SSH connection using paramiko
+│   │   └── serial_handler.py  # Serial connection using pyserial
+│   ├── ai/
+│   │   ├── __init__.py
+│   │   ├── router.py          # Routes AI requests to selected backend
+│   │   ├── claude_client.py   # Claude API client
+│   │   ├── ollama_client.py   # Ollama API client
+│   │   └── prompts.py         # System prompts for the AI (network engineer persona)
+│   ├── session/
+│   │   ├── __init__.py
+│   │   └── buffer.py          # Session buffer — one buffer per session ID, stores terminal I/O history
+│   └── config.py              # Configuration loading from .env
+├── frontend/
+│   ├── index.html             # Main page — tab bar, split-screen layout
+│   ├── css/
+│   │   └── style.css          # All styling
+│   └── js/
+│       ├── tabs.js            # Tab bar management — create, switch, close, reorder tabs
+│       ├── terminal.js        # xterm.js initialisation and per-tab WebSocket binding
+│       ├── chat.js            # AI chat panel logic
+│       ├── commands.js         # Command suggestion and approval UI
+│       └── connections.js      # Connection dialog and profile management
+└── profiles/
+    └── examples.json          # Example connection profiles
+```
+
+## Configuration (.env)
+
+```env
+# MATE configuration
+
+# Server
+MATE_HOST=127.0.0.1
+MATE_PORT=8765
+
+# Claude API (optional — leave blank to disable)
+ANTHROPIC_API_KEY=
+
+# Ollama (optional — defaults shown)
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:14b
+
+# Default AI backend: "claude" or "ollama"
+DEFAULT_AI_BACKEND=ollama
+
+# Serial port defaults (Windows)
+DEFAULT_SERIAL_PORT=COM3
+DEFAULT_BAUD_RATE=9600
+```
+
+## Build phases
+
+Build MATE incrementally. Each phase should produce a working application that does something useful. Do not skip ahead — complete and test each phase before moving to the next.
+
+### Phase 1 — Multi-tab SSH terminal (no AI yet)
+
+**Goal**: A working multi-tab terminal in the browser that can SSH into devices, with each tab being an independent session.
+
+**Backend — session architecture:**
+1. Set up the project structure and install dependencies
+2. Create the FastAPI app that serves `index.html` as a static file
+3. Implement `connections/manager.py` — a `SessionManager` class that maintains a dictionary of active sessions keyed by session ID (UUID). Each session holds: connection handler, session buffer, metadata (hostname, connection type, connect time, display label)
+4. Implement `session/buffer.py` — a `SessionBuffer` class that stores all terminal I/O for a single session. One buffer instance per session
+5. Implement `ssh_handler.py` — connect to a device using paramiko's `invoke_shell()`, return the channel. Each SSH connection is independent
+6. Implement WebSocket endpoint `/ws/terminal/{session_id}` — the session_id in the URL tells the backend which session this WebSocket belongs to. On each message: look up the session by ID, pipe the data to/from the correct paramiko channel
+7. Implement REST endpoint `POST /api/sessions` — creates a new session (accepts hostname, port, username, password, connection type), returns the new session_id
+8. Implement REST endpoint `GET /api/sessions` — returns list of active sessions with metadata (for the tab bar to display)
+9. Implement REST endpoint `DELETE /api/sessions/{session_id}` — tears down a session (closes SSH, clears buffer, removes from manager)
+
+**Frontend — tab UI:**
+10. Build `index.html` with a tab bar across the top and a terminal area below. Initially shows a "welcome" state with a connect button
+11. Implement `tabs.js` — manages the tab bar UI. Each tab stores: session_id, display label, the xterm.js Terminal instance, and the WebSocket connection. Clicking a tab shows/hides the correct terminal (use CSS `display:none` on inactive terminals, NOT destroying and recreating them — xterm.js needs to stay alive to receive background data)
+12. Implement `connections.js` — a connection dialog (modal) that asks for: display name (optional), hostname, port (default 22), username, password. On submit: POST to `/api/sessions`, get back session_id, create a new tab
+13. Implement `terminal.js` — when a new tab is created, instantiate a new xterm.js Terminal, open a WebSocket to `/ws/terminal/{session_id}`, bind them together. Handle resize events with the fit addon
+14. Tab close button (×) on each tab: sends DELETE to `/api/sessions/{session_id}`, closes WebSocket, destroys terminal instance, removes tab
+15. Keyboard shortcuts: `Ctrl+T` opens connection dialog (new tab), `Ctrl+W` closes active tab, `Ctrl+1` through `Ctrl+9` switches to that tab number
+16. Create `run.py` that starts uvicorn and opens the browser automatically
+
+**Important implementation details:**
+- xterm.js instances for background tabs must continue to exist and receive data even when not visible — if a command is running on a background tab, the output must still be captured. Only toggle CSS visibility, never destroy inactive terminals
+- Each tab's WebSocket is independent — closing one tab does not affect others
+- The tab label should auto-detect the device hostname from the CLI prompt if possible (parse for patterns like `hostname#` or `hostname>`), falling back to the display name or IP address
+- Handle disconnection per-tab: if a session drops, mark that tab visually (greyed out label, "(disconnected)" suffix) but don't remove it — the user might want to read the buffer
+
+**Test**: User can open MATE, create three tabs connecting to three different switches, switch between them freely, type commands in each, close individual tabs, and the other sessions remain unaffected.
+
+### Phase 2 — Split screen with AI chat
+
+**Goal**: Add the AI chat pane alongside the terminal tabs. The AI is session-aware and can see the active tab's terminal output.
+
+1. Redesign `index.html` for split-screen layout — terminal pane (with tab bar) on the left (60% width), chat on the right (40% width), with a draggable divider between them
+2. Build the chat panel UI — message history area, text input box, send button. The chat panel is global (one chat, not per-tab) but the AI always knows which tab is currently active
+3. Implement WebSocket endpoint `/ws/chat` in FastAPI — chat messages include the active `session_id` so the backend knows which session buffer to include as context
+4. Wire up the session buffer (built in Phase 1) — ensure every byte of terminal I/O is being written to the correct session's buffer
+5. Implement `ai/router.py` — accepts a chat message, the active session's buffer content, and the selected backend; routes to the correct AI client
+6. Implement `ai/ollama_client.py` — sends the chat message with session context to Ollama, streams the response back token by token over the WebSocket
+7. Implement `ai/claude_client.py` — same thing but for Claude API
+8. Add AI backend selector toggle in the chat panel header (Claude / Ollama)
+9. The AI system prompt (in `prompts.py`) should establish the AI as a senior network engineer who can see the terminal session and is here to help
+10. When the user switches tabs, the next AI message should automatically use the new active tab's session buffer — no manual action required
+11. Add a chat command `/context all` that includes ALL open session buffers in the next AI request (for cross-device questions like "compare the BGP tables on tab 1 and tab 3"). Add `/context [tab_number]` to target a specific tab regardless of which is active
+
+**Test**: User can SSH into a device in one tab, run commands, then ask the AI "what does this output mean?" and get a contextual answer. User switches to a different tab and asks about that device — the AI seamlessly switches context.
+
+### Phase 3 — Command suggestions (suggest and approve)
+
+**Goal**: The AI can suggest CLI commands that the user approves with one click, sent to the correct tab's session.
+
+1. Update the AI system prompt to instruct it to wrap suggested commands in a specific format: `[SUGGEST_CMD]show ip bgp summary[/SUGGEST_CMD]`
+2. In the chat panel frontend, parse AI responses for these tags and render them as styled clickable command blocks (monospace, highlighted, with a "Send to terminal" button and an "Edit" button). Each command block is tagged with the session_id it was generated for (i.e., whichever tab was active when the AI responded)
+3. When the user clicks "Send to terminal", send the command via WebSocket to the backend with the correct session_id — it gets injected into the right session even if the user has since switched tabs. Show a small label on the command block indicating which tab it will target (e.g., "→ switch01")
+4. When the user clicks "Edit", make the command text editable before sending
+5. Add a visual indicator in the terminal when a command was AI-suggested (e.g., a subtle flash or marker in the chat log)
+6. Add a confirmation step for potentially dangerous commands — the AI should flag commands like `reload`, `write erase`, `shutdown`, `no shutdown` (on interfaces), `clear` commands — these get an "Are you sure?" prompt
+
+**Test**: User asks "how do I check the spanning tree status?" — AI responds with explanation and a clickable `show spanning-tree summary` command block. User clicks it, command executes in the terminal, output appears.
+
+### Phase 4 — Serial console support
+
+**Goal**: Add serial/console cable connections alongside SSH.
+
+1. Implement `serial_handler.py` — connect to a COM port using pyserial, pipe data over WebSocket
+2. Update the connection dialog to offer connection type: SSH or Serial
+3. For serial: ask for COM port (with auto-detection of available ports), baud rate (default 9600), data bits, parity, stop bits
+4. Add a backend endpoint that returns available COM ports (pyserial can enumerate these)
+5. Serial connections use the same terminal pane and session buffer as SSH — the rest of the app is connection-agnostic
+6. Handle serial-specific quirks: send a carriage return on connect to wake the device, handle break signals
+
+**Test**: User plugs in a console cable to a Cisco switch, selects Serial connection in MATE, picks the COM port, and gets a working console session.
+
+### Phase 5 — Connection profiles and polish
+
+**Goal**: Save and manage connection profiles, general UX polish.
+
+1. Create a connection profile system — save/load device profiles as JSON (display name, hostname, port, username, connection type). Stored in `profiles/` directory
+2. Passwords should NOT be stored in profiles — prompt on connect (or integrate with system keyring later)
+3. Add a sidebar or dropdown for quick-connecting to saved profiles — clicking a profile opens a new tab with that connection pre-filled, just needs password
+4. Add a "Save profile" button in the connection dialog that saves current settings
+5. Add terminal customisation: font size, colour scheme (dark/light/solarized), scrollback buffer size — persisted in a `settings.json`
+6. Add a "Copy output" button in the status bar that copies the last N lines of the active terminal's output to clipboard
+7. Add session logging to file (optional, toggleable per-tab) — writes timestamped terminal output to `logs/` directory
+8. Add tab reordering via drag and drop
+9. Add a right-click context menu on tabs: duplicate connection, rename tab, copy hostname, close, close others
+10. Add a "Reconnect" option for disconnected tabs that re-establishes the same connection
+
+## AI system prompt guidelines
+
+The AI persona in MATE should be:
+
+- A senior network engineer with deep Cisco IOS/IOS-XE/NX-OS/ASA expertise
+- Aware that it can see the live terminal session — it should reference specific output when answering
+- Proactive but not overbearing — it can flag obvious issues it spots (e.g., interface errors incrementing, BGP neighbour down) but shouldn't spam observations
+- When suggesting commands, it should briefly explain WHY it's suggesting them
+- It should understand context across the session — if the user has already run `show run` earlier, the AI should reference that config when answering later questions
+- It should flag dangerous commands before suggesting them
+- It should know common Cisco troubleshooting workflows and guide the user through them step by step
+
+### Session context strategy
+
+When sending context to the AI, include:
+- The **active tab's** last 200 lines of terminal output (configurable) — this gives the AI the recent working context
+- The active tab's full session buffer summary if the session is long (truncated intelligently)
+- The current device hostname/prompt if detectable (parse the CLI prompt)
+- Which commands have been run in the active session (parse from the buffer)
+- A brief summary of ALL open sessions (tab number, device name, connection type) so the AI knows what's available
+- If the user used `/context all`, include the last 100 lines from EVERY open session, clearly labelled by tab
+
+The AI prompt should be structured as:
+```
+[System prompt — persona and rules]
+[Open sessions summary — tab list with device names]
+[Active session context — last N lines of terminal output from the active tab]
+[Active session command history — list of commands run this session]
+[Additional session context if /context all or /context N was used]
+[User message]
+```
+
+## Key design decisions
+
+### Why multi-tab from Phase 1?
+Session management (creating, tracking, destroying connections by ID) is the backbone of the backend. If you build Phase 1 with a single global connection and then try to add tabs later, you have to retrofit session IDs into every WebSocket handler, every buffer call, and every API endpoint. It's far less work to build the `SessionManager` dictionary pattern from day one — even if the user only opens one tab at first, the architecture supports N tabs with zero refactoring.
+
+### Why a local web app and not Electron?
+Electron adds ~200MB of overhead and build complexity. A Python backend serving a local web page gives us the same result with tools Steven already knows. The browser IS the renderer. If we want to package it later, we can wrap it with something like PyInstaller + a tray icon.
+
+### Why WebSockets and not plain HTTP?
+Terminal sessions are bidirectional, continuous streams. HTTP request/response doesn't work for this — you'd be polling constantly. WebSockets give us a persistent open channel in both directions, which is exactly what a terminal needs. Every keystroke goes up, every character of output comes down, in real time.
+
+### Why paramiko directly and not netmiko?
+Netmiko is built for send-command-get-response automation. We need a raw interactive shell — the user is typing live, getting real-time output, seeing prompts, using tab completion. Paramiko's `invoke_shell()` gives us that raw channel. Netmiko would actually get in the way here by trying to detect prompts and parse output.
+
+### Why session buffer in memory?
+For v1, in-memory is fine. Each tab/session has its own buffer, keyed by session ID. Buffers get cleared when the tab is closed. This avoids file I/O complexity and permission issues. Phase 5 adds optional per-tab file logging for persistence.
+
+## Frontend layout specification
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  MATE    [+ New Tab]  [Tab 1: switch01]  [Tab 2: ...]   │
+├───────────────────────────────┬───────────┬──────────────│
+│                               │ ◁ ▷ drag  │              │
+│                               │           │  AI Chat     │
+│   Terminal (xterm.js)         │           │              │
+│                               │           │  [Claude ▼]  │
+│   switch01#show ip int br     │           │              │
+│   Interface  IP-Address  ... │           │  You: What   │
+│   Gi0/1     10.1.1.1    up  │           │  does this   │
+│   Gi0/2     unassigned  down │           │  output mean?│
+│   ...                         │           │              │
+│                               │           │  AI: I can   │
+│                               │           │  see Gi0/2   │
+│                               │           │  is down...  │
+│                               │           │              │
+│                               │           │  ┌──────────┐│
+│                               │           │  │show run  ││
+│                               │           │  │int Gi0/2 ││
+│                               │           │  │[Send] [✎]││
+│                               │           │  └──────────┘│
+│                               │           │              │
+│                               │           │  [Type here] │
+├───────────────────────────────┴───────────┴──────────────┤
+│  SSH: switch01 (10.1.1.1:22) | Connected | Buffer: 842L | Tabs: 3  │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Colour scheme
+
+Use a dark terminal theme by default (dark background, light text) as network engineers expect this. The chat panel should use a slightly different background shade to visually distinguish it from the terminal. Use a colour palette inspired by modern terminal emulators:
+
+- Terminal background: `#1e1e2e`
+- Terminal text: `#cdd6f4`
+- Chat panel background: `#181825`
+- Chat panel text: `#cdd6f4`
+- AI messages: slightly different background to user messages
+- Command suggestion blocks: highlighted with a border, monospace font
+- Status bar: darker shade at the bottom
+
+## Error handling
+
+- SSH connection failures: show clear error in terminal pane with the paramiko error message, offer to retry
+- Serial port busy/unavailable: show which ports are available, suggest checking Device Manager
+- AI backend unreachable: show error in chat panel, suggest checking API key / Ollama status, allow switching backends
+- WebSocket disconnect: auto-reconnect with exponential backoff, show connection status indicator
+- Session timeout: detect when the device closes the connection, notify user
+
+## Security notes
+
+- API keys are stored in `.env` only, never in code or profiles
+- Passwords are never stored — prompted on each connection (keyring integration is a future enhancement)
+- The web server binds to `127.0.0.1` only — not accessible from other machines
+- Serial connections are inherently local
+- Session buffers are in-memory only and cleared on disconnect (unless logging is explicitly enabled)
+
+## Development workflow
+
+This project should be built using Claude Code. Steven will provide direction and testing on real network devices. The development machine is Windows with Python installed. Claude Code should:
+
+1. Work through phases sequentially — do not jump ahead
+2. Test each component as it's built — use print statements and clear error messages
+3. Keep the code clean and well-commented — Steven is learning from this codebase
+4. Use type hints in Python for clarity
+5. Keep functions short and single-purpose with clear docstrings
+6. When creating new files, explain what the file does and why it exists in a comment at the top

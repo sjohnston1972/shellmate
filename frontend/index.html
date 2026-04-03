@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MATE — Managed AI Terminal Environment</title>
+
+  <!-- Google Fonts — Space Grotesk, Inter, JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+
+  <!-- xterm.js from CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+  <!-- ================================================================
+       LEFT SIDEBAR — icon-only navigation rail
+  ================================================================ -->
+  <aside id="sidebar">
+    <div id="sidebar-logo">
+      <span class="material-symbols-outlined">terminal</span>
+    </div>
+    <nav id="sidebar-nav">
+      <a href="#" id="sidebar-link-sessions" class="sidebar-link active" title="Sessions">
+        <span class="material-symbols-outlined">terminal</span>
+      </a>
+      <a href="#" class="sidebar-link" title="Network Map">
+        <span class="material-symbols-outlined">hub</span>
+      </a>
+      <a href="#" id="sidebar-link-logs" class="sidebar-link" title="Logs">
+        <span class="material-symbols-outlined">list_alt</span>
+      </a>
+      <a href="#" id="sidebar-link-settings" class="sidebar-link" title="Settings">
+        <span class="material-symbols-outlined">settings</span>
+      </a>
+    </nav>
+    <div id="sidebar-bottom">
+      <a href="#" class="sidebar-link" title="Docs">
+        <span class="material-symbols-outlined">description</span>
+      </a>
+      <a href="#" class="sidebar-link" title="Support">
+        <span class="material-symbols-outlined">help</span>
+      </a>
+    </div>
+  </aside>
+
+  <!-- ================================================================
+       RIGHT MAIN — tab bar + terminal area + status bar
+  ================================================================ -->
+  <div id="right-main">
+
+    <!-- ================================================================
+         TAB BAR
+    ================================================================ -->
+    <header id="tab-bar">
+      <div id="tab-bar-brand">MATE</div>
+      <div id="tab-list"></div>
+      <button id="btn-new-tab" title="New connection (Ctrl+T)">
+        <span class="material-symbols-outlined">add</span>
+      </button>
+    </header>
+
+    <!-- ================================================================
+         MAIN AREA — terminal panes stacked here (CSS shows only one)
+    ================================================================ -->
+    <main id="main-area">
+      <!-- Welcome screen shown when no tabs are open -->
+      <div id="welcome-screen">
+        <div id="welcome-content">
+          <h1>MATE</h1>
+          <p class="welcome-tagline">Managed AI Terminal Environment</p>
+          <p class="welcome-sub">Connect to network devices via SSH or serial console</p>
+          <button id="btn-welcome-connect" class="btn-primary">
+            <span class="material-symbols-outlined">add_circle</span>
+            New Connection
+          </button>
+          <div class="shortcuts-hint">
+            <span class="shortcut-pill"><kbd>Ctrl</kbd>+<kbd>T</kbd> New tab</span>
+            <span class="shortcut-pill"><kbd>Ctrl</kbd>+<kbd>W</kbd> Close tab</span>
+            <span class="shortcut-pill"><kbd>Ctrl</kbd>+<kbd>1–9</kbd> Switch tab</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terminal containers are injected here by terminal.js -->
+      <div id="terminals-container"></div>
+    </main>
+
+    <!-- ================================================================
+         STATUS BAR
+    ================================================================ -->
+    <footer id="status-bar">
+      <span id="status-connection">No active session</span>
+      <span class="status-sep">|</span>
+      <span id="status-buffer">Buffer: 0L</span>
+      <span class="status-sep">|</span>
+      <span id="status-tabs">Tabs: 0</span>
+    </footer>
+
+  </div><!-- /#right-main -->
+
+  <!-- ================================================================
+       CONNECTION MODAL
+  ================================================================ -->
+  <div id="modal-overlay" class="hidden">
+    <div id="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div id="modal-header">
+        <h2 id="modal-title">New Connection</h2>
+        <button id="modal-close" aria-label="Close">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <form id="connection-form" autocomplete="off">
+
+        <!-- Saved profiles -->
+        <div id="saved-profiles-section">
+          <div class="profiles-header">
+            <span class="profiles-label">Saved Connections</span>
+          </div>
+          <div id="saved-profiles-list"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="field-label">Display name <span class="optional">(optional)</span></label>
+          <input type="text" id="field-label" placeholder="e.g. core-switch-01" />
+        </div>
+
+        <div class="form-group">
+          <label for="field-hostname">Hostname / IP <span class="required">*</span></label>
+          <input type="text" id="field-hostname" placeholder="192.168.1.1" required />
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="field-port">Port</label>
+            <input type="number" id="field-port" value="22" min="1" max="65535" />
+          </div>
+          <div class="form-group">
+            <label for="field-conntype">Type</label>
+            <select id="field-conntype">
+              <option value="ssh" selected>SSH</option>
+              <option value="serial">Serial</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="field-username">Username <span class="required">*</span></label>
+          <input type="text" id="field-username" placeholder="admin" required />
+        </div>
+
+        <div class="form-group">
+          <label for="field-password">Password <span class="required">*</span></label>
+          <input type="password" id="field-password" required />
+        </div>
+
+        <div id="form-error" class="form-error hidden"></div>
+
+        <div id="modal-actions">
+          <button type="button" id="btn-save-profile" class="btn-tertiary" title="Save connection details (no password)">
+            <span class="material-symbols-outlined">bookmark_add</span>
+            Save
+          </button>
+          <button type="button" id="btn-cancel" class="btn-secondary">Cancel</button>
+          <button type="submit" id="btn-connect" class="btn-primary">
+            <span id="btn-connect-label">Connect</span>
+            <span id="btn-connect-spinner" class="spinner hidden"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       SETTINGS PANEL OVERLAY
+  ================================================================ -->
+  <div id="settings-overlay" class="panel-overlay hidden">
+    <div id="settings-panel" class="side-panel">
+      <div class="panel-header">
+        <h2 class="panel-title">Settings</h2>
+        <button id="settings-close" class="icon-btn" aria-label="Close">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="panel-body">
+
+        <!-- Terminal Appearance -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Terminal Appearance</h3>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-color-scheme">Color Scheme</label>
+            <select id="setting-color-scheme" class="setting-input">
+              <option value="deep_space">Deep Space (Default)</option>
+              <option value="solarized_dark">Solarized Dark</option>
+              <option value="nord">Nord</option>
+              <option value="one_dark">One Dark</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-font-family">Font Family</label>
+            <select id="setting-font-family" class="setting-input">
+              <option value="JetBrains Mono, monospace">JetBrains Mono</option>
+              <option value="Fira Code, monospace">Fira Code</option>
+              <option value="Cascadia Code, monospace">Cascadia Code</option>
+              <option value="Consolas, monospace">Consolas</option>
+              <option value="Courier New, monospace">Courier New</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-font-size">Font Size</label>
+            <div class="setting-input-group">
+              <input type="number" id="setting-font-size" class="setting-input setting-input-sm" min="10" max="24" step="1" />
+              <span class="setting-unit">px</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-line-height">Line Height</label>
+            <div class="setting-input-group">
+              <input type="number" id="setting-line-height" class="setting-input setting-input-sm" min="1.0" max="2.0" step="0.1" />
+            </div>
+          </div>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-cursor-style">Cursor Style</label>
+            <select id="setting-cursor-style" class="setting-input">
+              <option value="block">Block</option>
+              <option value="bar">Bar</option>
+              <option value="underline">Underline</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-cursor-blink">Cursor Blink</label>
+            <label class="toggle">
+              <input type="checkbox" id="setting-cursor-blink" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+        </section>
+
+        <!-- Terminal Behavior -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Behavior</h3>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-scrollback">Scrollback Lines</label>
+            <div class="setting-input-group">
+              <input type="number" id="setting-scrollback" class="setting-input setting-input-sm" min="100" max="50000" step="100" />
+              <span class="setting-unit">lines</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-right-click-paste">Right-click Paste</label>
+            <label class="toggle">
+              <input type="checkbox" id="setting-right-click-paste" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-copy-on-select">Copy on Select</label>
+            <label class="toggle">
+              <input type="checkbox" id="setting-copy-on-select" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+        </section>
+
+        <!-- Logging -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Session Logging</h3>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-logging-enabled">Enable File Logging</label>
+            <label class="toggle">
+              <input type="checkbox" id="setting-logging-enabled" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-log-dir">Log Directory</label>
+            <input type="text" id="setting-log-dir" class="setting-input" placeholder="logs" />
+          </div>
+        </section>
+
+      </div>
+      <div class="panel-footer">
+        <button id="settings-save" class="btn-primary">
+          <span class="material-symbols-outlined">save</span>
+          Save Settings
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       LOGS PANEL OVERLAY
+  ================================================================ -->
+  <div id="logs-overlay" class="panel-overlay hidden">
+    <div id="logs-panel" class="side-panel">
+      <div class="panel-header">
+        <h2 class="panel-title">Session Logs</h2>
+        <button id="logs-close" class="icon-btn" aria-label="Close">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="panel-body">
+        <div id="logs-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       PASTE CONFIRMATION MODAL
+  ================================================================ -->
+  <div id="paste-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="paste-title">
+    <div id="paste-dialog">
+      <div id="paste-header">
+        <span class="material-symbols-outlined" style="color:var(--primary)">content_paste</span>
+        <h2 id="paste-title">Confirm Paste</h2>
+      </div>
+      <p class="paste-label">You are about to send this to the terminal:</p>
+      <pre id="paste-preview"></pre>
+      <div id="paste-actions">
+        <button id="paste-cancel" class="btn-secondary">Cancel</button>
+        <button id="paste-confirm" class="btn-primary">
+          <span class="material-symbols-outlined">send</span>
+          Send
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Copy toast notification -->
+  <div id="copy-toast" class="hidden">
+    <span class="material-symbols-outlined">check</span>
+    Copied
+  </div>
+
+  <!-- ================================================================
+       SCRIPTS — order matters: settings first (loads settings into
+       window.mateSettings), then connections → tabs → terminal
+  ================================================================ -->
+  <script src="/static/js/connections.js"></script>
+  <script src="/static/js/tabs.js"></script>
+  <script src="/static/js/terminal.js"></script>
+  <script src="/static/js/settings.js"></script>
+  <script src="/static/js/logs.js"></script>
+  <script>
+    // ----------------------------------------------------------------
+    // Paste confirmation modal
+    // ----------------------------------------------------------------
+    (function () {
+      const overlay  = document.getElementById('paste-overlay');
+      const preview  = document.getElementById('paste-preview');
+      const btnOk    = document.getElementById('paste-confirm');
+      const btnNo    = document.getElementById('paste-cancel');
+      let _pendingCb = null;
+
+      function show(text, onConfirm) {
+        // Truncate long pastes in the preview
+        const MAX = 400;
+        preview.textContent = text.length > MAX ? text.slice(0, MAX) + '\n…' : text;
+        _pendingCb = onConfirm;
+        overlay.classList.remove('hidden');
+        btnOk.focus();
+      }
+
+      function hide() {
+        overlay.classList.add('hidden');
+        _pendingCb = null;
+      }
+
+      btnOk.addEventListener('click', () => {
+        if (_pendingCb) _pendingCb();
+        hide();
+      });
+
+      btnNo.addEventListener('click', hide);
+
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) hide();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !overlay.classList.contains('hidden')) hide();
+        if (e.key === 'Enter' && !overlay.classList.contains('hidden')) {
+          e.preventDefault();
+          if (_pendingCb) _pendingCb();
+          hide();
+        }
+      });
+
+      window._showPasteModal = show;
+    })();
+
+    // ----------------------------------------------------------------
+    // Copy toast
+    // ----------------------------------------------------------------
+    (function () {
+      const toast = document.getElementById('copy-toast');
+      let _timer = null;
+
+      function show(text) {
+        clearTimeout(_timer);
+        toast.classList.remove('hidden');
+        _timer = setTimeout(() => toast.classList.add('hidden'), 1500);
+      }
+
+      window._showCopyToast = show;
+    })();
+  </script>
+
+</body>
+</html>
