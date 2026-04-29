@@ -154,11 +154,13 @@
     sendBtn.disabled = true;
 
     if (chatWs && chatWs.readyState === WebSocket.OPEN) {
+      const openIds = typeof window.getOpenSessionIds === 'function' ? window.getOpenSessionIds() : [];
       chatWs.send(JSON.stringify({
         message,
-        session_id:   sessionId,
-        backend:      currentBackend,
-        context_mode: mode,
+        session_id:        sessionId,
+        open_session_ids:  openIds,
+        backend:           currentBackend,
+        context_mode:      mode,
       }));
     } else {
       finishStreaming();
@@ -243,6 +245,17 @@
     }));
   }
 
+  function _flashTab(tab) {
+    if (!tab || !tab.tabEl) return;
+    tab.tabEl.classList.remove('cmd-flash');
+    // Force reflow to restart animation if already flashing
+    void tab.tabEl.offsetWidth;
+    tab.tabEl.classList.add('cmd-flash');
+    tab.tabEl.addEventListener('animationend', () => {
+      tab.tabEl.classList.remove('cmd-flash');
+    }, { once: true });
+  }
+
   function appendErrorBubble(msg) {
     const bubble = document.createElement('div');
     bubble.className = 'chat-bubble chat-bubble-error';
@@ -267,14 +280,16 @@
     raw = raw.replace(/(?<!\[)(SUGGEST_CMD|ADD_CMD)\]/g, '[$1]');          // fix missing opening [
     raw = raw.replace(/\[\/\[+(SUGGEST_CMD|ADD_CMD)\]/g, '[/$1]');         // fix extra [ in closing tag
 
-    // Split on [SUGGEST_CMD]...[/SUGGEST_CMD] or [ADD_CMD]...[/ADD_CMD] blocks
-    const parts = raw.split(/(\[(?:SUGGEST_CMD|ADD_CMD)\][\s\S]*?\[\/(?:SUGGEST_CMD|ADD_CMD)\])/g);
+    // Split on [SUGGEST_CMD]...[/SUGGEST_CMD] or [SUGGEST_CMD:N]...[/SUGGEST_CMD] blocks
+    const parts = raw.split(/(\[(?:SUGGEST_CMD|ADD_CMD)(?::\d+)?\][\s\S]*?\[\/(?:SUGGEST_CMD|ADD_CMD)\])/g);
     bubble.innerHTML = '';
 
     parts.forEach(part => {
-      const cmdMatch = part.match(/^\[(?:SUGGEST_CMD|ADD_CMD)\]([\s\S]*?)\[\/(?:SUGGEST_CMD|ADD_CMD)\]$/);
+      // Group 1 = optional tab number, group 2 = command text
+      const cmdMatch = part.match(/^\[(?:SUGGEST_CMD|ADD_CMD)(?::(\d+))?\]([\s\S]*?)\[\/(?:SUGGEST_CMD|ADD_CMD)\]$/);
       if (cmdMatch) {
-        bubble.appendChild(buildCommandBlock(cmdMatch[1].trim()));
+        const tabNum = cmdMatch[1] ? parseInt(cmdMatch[1], 10) : null;
+        bubble.appendChild(buildCommandBlock(cmdMatch[2].trim(), tabNum));
       } else if (part) {
         const textNode = document.createElement('div');
         textNode.className = 'chat-text';
@@ -296,13 +311,23 @@
       .replace(/\n/g, '<br>');
   }
 
-  function buildCommandBlock(cmd) {
+  function buildCommandBlock(cmd, targetTabNum = null) {
     const wrap = document.createElement('div');
     wrap.className = 'cmd-block';
+    if (targetTabNum) wrap.dataset.targetTab = targetTabNum;
+
+    // Resolve label for the target tab
+    let tabLabel = '';
+    if (targetTabNum) {
+      const t = typeof window.getTabByNumber === 'function' ? window.getTabByNumber(targetTabNum) : null;
+      tabLabel = t ? `→ Tab ${targetTabNum}: ${t.label}` : `→ Tab ${targetTabNum}`;
+    }
+
     wrap.innerHTML = `
       <pre class="cmd-block-text">${escHtml(cmd)}</pre>
       <div class="cmd-block-actions">
-        <button class="cmd-send btn-primary" title="Send to active terminal">
+        ${tabLabel ? `<span class="cmd-target-label">${escHtml(tabLabel)}</span>` : ''}
+        <button class="cmd-send btn-primary" title="${targetTabNum ? `Send to Tab ${targetTabNum}` : 'Send to active terminal'}">
           <span class="material-symbols-outlined">send</span> Send
         </button>
         <button class="cmd-edit btn-secondary" title="Edit before sending">
@@ -315,13 +340,14 @@
 
   function wireCommandBlocks(bubble) {
     bubble.querySelectorAll('.cmd-block').forEach(block => {
-      const pre      = block.querySelector('.cmd-block-text');
-      const sendBtn2 = block.querySelector('.cmd-send');
-      const editBtn  = block.querySelector('.cmd-edit');
+      const pre       = block.querySelector('.cmd-block-text');
+      const sendBtn2  = block.querySelector('.cmd-send');
+      const editBtn   = block.querySelector('.cmd-edit');
+      const targetTab = block.dataset.targetTab ? parseInt(block.dataset.targetTab, 10) : null;
 
       if (sendBtn2 && !sendBtn2.dataset.wired) {
         sendBtn2.dataset.wired = '1';
-        sendBtn2.addEventListener('click', () => injectCommand(pre.textContent));
+        sendBtn2.addEventListener('click', () => injectCommand(pre.textContent, targetTab));
       }
 
       if (editBtn && !editBtn.dataset.wired) {
@@ -329,7 +355,6 @@
         editBtn.addEventListener('click', () => {
           pre.contentEditable = 'true';
           pre.focus();
-          // Select all text in the editable pre
           const range = document.createRange();
           range.selectNodeContents(pre);
           window.getSelection().removeAllRanges();
@@ -340,25 +365,39 @@
     });
   }
 
-  function injectCommand(cmd) {
-    const activeTab = typeof window.getActiveTab === 'function' ? window.getActiveTab() : null;
-    if (!activeTab || !activeTab.websocket) {
-      appendErrorBubble('No active terminal session to send command to.');
+  function injectCommand(cmd, targetTabNum = null) {
+    // If a specific tab number was given, route to that tab; otherwise use active tab
+    let tab = null;
+    if (targetTabNum && typeof window.getTabByNumber === 'function') {
+      tab = window.getTabByNumber(targetTabNum);
+      if (!tab) {
+        appendErrorBubble(`Tab ${targetTabNum} is not open.`);
+        return;
+      }
+      // Switch to target tab and flash it so the user notices the context change
+      if (typeof window.switchToTabBySessionId === 'function') {
+        window.switchToTabBySessionId(tab.sessionId);
+      }
+      _flashTab(tab);
+    } else {
+      tab = typeof window.getActiveTab === 'function' ? window.getActiveTab() : null;
+      if (!tab) {
+        appendErrorBubble('No active terminal session to send command to.');
+        return;
+      }
+    }
+
+    const ws = tab.websocket;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      appendErrorBubble(`Tab ${targetTabNum || 'active'} is not connected.`);
       return;
     }
-    const ws = activeTab.websocket;
-    if (ws.readyState !== WebSocket.OPEN) {
-      appendErrorBubble('Terminal session is not connected.');
-      return;
-    }
-    // Strip surrounding backticks or quotes the AI may have included
+
     const clean = cmd.replace(/^[`'"]+|[`'"]+$/g, '').trim();
-    // Send command + carriage return to the terminal WebSocket
     ws.send(JSON.stringify({ type: 'input', data: clean + '\r' }));
 
-    // Watch for the command output and auto-feed it back to the AI
-    const baselineLines = activeTab.getBufferLines ? activeTab.getBufferLines() : 0;
-    startOutputWatcher(clean, baselineLines, activeTab.sessionId);
+    const baselineLines = tab.getBufferLines ? tab.getBufferLines() : 0;
+    startOutputWatcher(clean, baselineLines, tab.sessionId);
   }
 
   // -----------------------------------------------------------------------

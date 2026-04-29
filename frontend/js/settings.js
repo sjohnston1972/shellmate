@@ -219,11 +219,17 @@
     loadSettings();
   });
 
+  function _applyUiFontSize(size) {
+    const px = (parseInt(size, 10) || 14) + 'px';
+    document.documentElement.style.setProperty('--ui-font-size', px);
+  }
+
   async function loadSettings() {
     try {
       const res = await fetch('/api/settings');
       currentSettings = await res.json();
       window.shellmateSettings = currentSettings;
+      _applyUiFontSize((currentSettings.appearance || {}).ui_font_size || 14);
     } catch (e) {
       console.warn('Could not load settings:', e);
     }
@@ -253,7 +259,8 @@
     _checked('setting-copy-on-select',    !!t.copy_on_select);
     _checked('setting-logging-enabled',   !!l.enabled);
     _val('setting-log-dir',          l.directory || 'logs');
-    _val('setting-color-scheme',     a.color_scheme || 'deep_space');
+    _val('setting-color-scheme',     a.color_scheme  || 'deep_space');
+    _val('setting-ui-font-size',     a.ui_font_size  || 14);
 
     // Populate color overrides — show scheme defaults if no override saved
     const schemeName = a.color_scheme || 'deep_space';
@@ -287,6 +294,7 @@
       },
       appearance: {
         color_scheme:        schemeName,
+        ui_font_size:        parseInt(_gval('setting-ui-font-size'), 10) || 14,
         // Only store override if it differs from scheme default
         foreground_override: (_isValidHex(fgHex) && fgHex.toLowerCase() !== schemeTheme.foreground.toLowerCase()) ? fgHex : null,
         background_override: (_isValidHex(bgHex) && bgHex.toLowerCase() !== schemeTheme.background.toLowerCase()) ? bgHex : null,
@@ -301,6 +309,7 @@
       });
       currentSettings = await res.json();
       window.shellmateSettings = currentSettings;
+      _applyUiFontSize((currentSettings.appearance || {}).ui_font_size || 14);
       // Notify terminal.js to apply new settings
       window.dispatchEvent(new CustomEvent('shellmate:settings-changed', { detail: currentSettings }));
       closeSettings();

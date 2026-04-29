@@ -28,7 +28,7 @@ OLLAMA_HOST: str = _ollama_host_raw
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 
 # Default AI backend ("claude" or "ollama")
-DEFAULT_AI_BACKEND: str = os.getenv("DEFAULT_AI_BACKEND", "ollama")
+DEFAULT_AI_BACKEND: str = os.getenv("DEFAULT_AI_BACKEND", "claude")
 
 # Serial / console defaults (Windows COM port)
 DEFAULT_SERIAL_PORT: str = os.getenv("DEFAULT_SERIAL_PORT", "COM3")

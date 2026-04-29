@@ -412,10 +412,11 @@ async def chat_websocket(websocket: WebSocket) -> None:
                 )
                 continue
 
-            user_message = msg.get("message", "").strip()
-            session_id   = msg.get("session_id")
-            backend      = msg.get("backend", DEFAULT_AI_BACKEND)
-            context_mode = msg.get("context_mode", "active")
+            user_message     = msg.get("message", "").strip()
+            session_id       = msg.get("session_id")
+            backend          = msg.get("backend", DEFAULT_AI_BACKEND)
+            context_mode     = msg.get("context_mode", "active")
+            open_session_ids = msg.get("open_session_ids") or None
 
             if not user_message:
                 continue
@@ -427,6 +428,7 @@ async def chat_websocket(websocket: WebSocket) -> None:
                     backend=backend,
                     context_mode=context_mode,
                     session_manager=session_manager,
+                    open_session_ids=open_session_ids,
                 ):
                     await websocket.send_text(
                         json.dumps({"type": "chunk", "data": chunk})

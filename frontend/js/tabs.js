@@ -23,6 +23,9 @@
   /** @type {number} Index of the currently visible tab (-1 = none) */
   let activeTabIndex = -1;
 
+  /** @type {string|null} sessionId of the tab currently being dragged */
+  let _dragSrcId = null;
+
   // -------------------------------------------------------------------------
   // DOM references
   // -------------------------------------------------------------------------
@@ -113,15 +116,15 @@
     tabs.push(tabObj);
     const newIndex = tabs.length - 1;
 
-    // Wire up click events
+    // Wire up click events — always look up current index (drag may have moved it)
     tabEl.addEventListener('click', (e) => {
-      if (e.target === closeBtn) return;  // handled below
-      switchToTab(newIndex);
+      if (e.target === closeBtn) return;
+      const idx = tabs.findIndex(t => t.sessionId === session_id);
+      if (idx !== -1) switchToTab(idx);
     });
 
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // Find current index at click time (array may have shifted)
       const idx = tabs.findIndex(t => t.sessionId === session_id);
       if (idx !== -1) closeTab(idx);
     });
@@ -130,6 +133,9 @@
     tabEl.addEventListener('contextmenu', (e) => {
       _showTabContextMenu(e, session_id);
     });
+
+    // Drag to reorder
+    _bindDrag(tabEl, session_id);
 
     // Hide the welcome screen now that we have a tab
     welcomeScreen.classList.add('hidden');
@@ -324,6 +330,70 @@
   }
 
   // -------------------------------------------------------------------------
+  // Drag-to-reorder
+  // -------------------------------------------------------------------------
+
+  function _bindDrag(tabEl, sessionId) {
+    tabEl.setAttribute('draggable', 'true');
+
+    tabEl.addEventListener('dragstart', (e) => {
+      _dragSrcId = sessionId;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', sessionId);
+      // Slight delay so the ghost image renders before we dim the element
+      requestAnimationFrame(() => tabEl.classList.add('dragging'));
+    });
+
+    tabEl.addEventListener('dragend', () => {
+      tabEl.classList.remove('dragging');
+      tabList.querySelectorAll('.tab').forEach(t => t.classList.remove('drag-over'));
+      _dragSrcId = null;
+    });
+
+    tabEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (!_dragSrcId || _dragSrcId === sessionId) return;
+      tabList.querySelectorAll('.tab').forEach(t => t.classList.remove('drag-over'));
+      tabEl.classList.add('drag-over');
+    });
+
+    tabEl.addEventListener('dragleave', (e) => {
+      // Only remove if leaving to something outside this tab
+      if (!tabEl.contains(e.relatedTarget)) {
+        tabEl.classList.remove('drag-over');
+      }
+    });
+
+    tabEl.addEventListener('drop', (e) => {
+      e.preventDefault();
+      tabEl.classList.remove('drag-over');
+      if (!_dragSrcId || _dragSrcId === sessionId) return;
+
+      const srcIdx = tabs.findIndex(t => t.sessionId === _dragSrcId);
+      const dstIdx = tabs.findIndex(t => t.sessionId === sessionId);
+      if (srcIdx === -1 || dstIdx === -1) return;
+
+      // Reorder the tabs array
+      const [moved] = tabs.splice(srcIdx, 1);
+      tabs.splice(dstIdx, 0, moved);
+
+      // Reorder the DOM to match
+      if (dstIdx > srcIdx) {
+        tabList.insertBefore(moved.tabEl, tabEl.nextSibling);
+      } else {
+        tabList.insertBefore(moved.tabEl, tabEl);
+      }
+
+      // Keep activeTabIndex correct
+      const activeSession = getActiveTab();
+      if (activeSession) {
+        activeTabIndex = tabs.findIndex(t => t.sessionId === activeSession.sessionId);
+      }
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Tab right-click context menu
   // -------------------------------------------------------------------------
 
@@ -439,8 +509,18 @@
   // Expose to global scope
   // -------------------------------------------------------------------------
 
+  /** Return an array of all open session IDs in current tab order. */
+  window.getOpenSessionIds = () => tabs.map(t => t.sessionId);
+
+  /** Return the tab object at 1-based tab number, or null. */
+  window.getTabByNumber = (n) => tabs[n - 1] || null;
+
   window.createTab        = createTab;
   window.switchToTab      = switchToTab;
+  window.switchToTabBySessionId = (sessionId) => {
+    const idx = tabs.findIndex(t => t.sessionId === sessionId);
+    if (idx !== -1) switchToTab(idx);
+  };
   window.closeTab         = closeTab;
   window.getActiveTab     = getActiveTab;
   window.updateTabLabel   = updateTabLabel;

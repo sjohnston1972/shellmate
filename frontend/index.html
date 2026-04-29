@@ -26,7 +26,7 @@
   ================================================================ -->
   <aside id="sidebar">
     <div id="sidebar-logo">
-      <span class="material-symbols-outlined">terminal</span>
+      <img src="/static/Untitled-removebg-preview.png" alt="ShellMate" id="sidebar-logo-img" />
     </div>
     <nav id="sidebar-nav">
       <a href="#" id="sidebar-link-sessions" class="sidebar-link active" title="Sessions">
@@ -79,7 +79,7 @@
         <!-- Welcome screen shown when no tabs are open -->
         <div id="welcome-screen">
           <div id="welcome-content">
-            <h1>ShellMate</h1>
+            <h1><img src="/static/Untitled-removebg-preview.png" alt="" id="welcome-logo" />ShellMate</h1>
             
 
             <!-- Saved session quick-launch grid -->
@@ -117,7 +117,7 @@
           <div id="chat-header-right">
             <select id="ai-backend-select" title="AI backend">
               <option value="ollama">Ollama</option>
-              <option value="claude">Claude</option>
+              <option value="claude" selected>Claude</option>
             </select>
             <button id="chat-clear" class="icon-btn" title="Clear chat">
               <span class="material-symbols-outlined">delete_sweep</span>
@@ -346,6 +346,18 @@ GigEth0/2     unassigned    YES unset  down     down
               <input type="checkbox" id="setting-cursor-blink" />
               <span class="toggle-track"></span>
             </label>
+          </div>
+        </section>
+
+        <!-- Interface -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">ShellMate Interface</h3>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-ui-font-size">UI Text Size</label>
+            <div class="setting-input-group">
+              <input type="number" id="setting-ui-font-size" class="setting-input setting-input-sm" min="11" max="20" step="1" />
+              <span class="setting-unit">px</span>
+            </div>
           </div>
         </section>
 

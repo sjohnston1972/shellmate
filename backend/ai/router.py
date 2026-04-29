@@ -31,15 +31,20 @@ async def stream_chat(
     message: str,
     active_session_id: str | None,
     backend: str,
-    context_mode: str,          # "active" | "all" | "1" | "2" etc
+    context_mode: str,                    # "active" | "all" | "1" | "2" etc
     session_manager: SessionManager,
+    open_session_ids: list[str] | None = None,  # only sessions the browser has open
 ) -> AsyncIterator[str]:
     """
     Build context from session buffers, then stream an AI response.
     Yields text chunks.
     """
-    # Build sessions summary list
+    # Filter to sessions the browser currently has open (prevents stale sessions
+    # from previous page loads appearing as phantom tabs in the AI context)
     all_sessions = session_manager.get_all_sessions()
+    if open_session_ids:
+        id_set = set(open_session_ids)
+        all_sessions = [s for s in all_sessions if s.get("session_id") in id_set]
     sessions_summary = [
         {
             "tab_num": i + 1,
