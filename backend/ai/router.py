@@ -40,11 +40,15 @@ async def stream_chat(
     Yields text chunks.
     """
     # Filter to sessions the browser currently has open (prevents stale sessions
-    # from previous page loads appearing as phantom tabs in the AI context)
+    # from previous page loads appearing as phantom tabs in the AI context).
+    # Crucially, reorder to match the frontend's visual tab order so that
+    # tab numbers in the AI context always match what the user sees on screen.
     all_sessions = session_manager.get_all_sessions()
     if open_session_ids:
         id_set = set(open_session_ids)
-        all_sessions = [s for s in all_sessions if s.get("session_id") in id_set]
+        session_map = {s.get("session_id"): s for s in all_sessions if s.get("session_id") in id_set}
+        # Preserve frontend tab order; skip any IDs the backend no longer has
+        all_sessions = [session_map[sid] for sid in open_session_ids if sid in session_map]
     sessions_summary = [
         {
             "tab_num": i + 1,

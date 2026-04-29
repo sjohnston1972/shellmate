@@ -17,7 +17,7 @@
   // -----------------------------------------------------------------------
   let chatWs          = null;
   let isStreaming     = false;
-  let currentBackend  = 'ollama'; // overridden by settings on load
+  let currentBackend  = 'claude'; // overridden by settings on load
   let contextMode     = 'active'; // 'active' | 'all' | '1'..'9'
   let streamingBubble = null;     // the <div> currently being filled
   let _outputWatcher  = null;     // active command output watcher
@@ -43,13 +43,8 @@
     backendSelect    = document.getElementById('ai-backend-select');
     contextIndicator = document.getElementById('chat-context-indicator');
 
-    // Load backend preference from settings
-    const s = window.shellmateSettings || {};
-    const savedBackend = s.appearance && s.appearance.ai_backend;
-    if (savedBackend) {
-      currentBackend = savedBackend;
-      backendSelect.value = savedBackend;
-    }
+    // Sync currentBackend from the dropdown's initial value (set via HTML selected attr)
+    currentBackend = backendSelect.value || 'claude';
 
     // Wire up events
     sendBtn.addEventListener('click', sendMessage);

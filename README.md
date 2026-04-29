@@ -2,17 +2,20 @@
 
 A split-screen, multi-tab network terminal with a built-in agentic AI copilot. Built for network engineers working with Cisco switches, routers, firewalls and similar devices.
 
-![MATE Terminal](stitch_ai_network_terminal/screen.png)
+![ShellMate welcome screen](docs/screenshot-welcome.png)
 
 ## What it does
 
 - **Multi-tab SSH terminal** — connect to multiple network devices simultaneously, each in its own tab with an independent session, buffer and WebSocket
-- **AI chat pane** *(Phase 2 — coming soon)* — the AI can see your terminal output and suggest commands you can approve with one click
-- **Saved connection profiles** — save device details (no passwords stored) for quick reconnect
-- **Settings panel** — customise font, size, colour scheme (Deep Space, Solarized Dark, Nord, One Dark), scrollback, cursor style, logging
+- **AI chat copilot** — Claude or Ollama sees your live terminal output and answers questions about what's on screen
+- **Command suggestions** — the AI suggests CLI commands you can approve with one click; dangerous commands get a confirmation prompt
+- **Saved connection profiles** — save device details (no passwords stored) for one-click reconnect from the welcome screen
+- **Session-aware context** — use `/context all` or `/context 2` to pull in other tabs; the AI always knows which tab is active
+- **Tab management** — drag to reorder, right-click context menu, `Ctrl+1–9` shortcuts, `Ctrl+T`/`Ctrl+W`
+- **Settings panel** — font, size, colour scheme (Deep Space, Solarized Dark, Nord, One Dark, Gruvbox, Dracula, Monokai), cursor, scrollback, UI text size
+- **Light / dark theme** — toggle from the sidebar
+- **Smart copy/paste** — `Ctrl+C` (smart — copies selection or passes SIGINT), `Ctrl+Shift+C/V`, right-click paste dialog
 - **Session logging** — optional per-session file logging to a configurable directory
-- **Smart copy/paste** — double-click to copy selection, right-click for a paste confirmation dialog
-- **Serial console** *(Phase 4 — coming soon)* — connect via console cable as well as SSH
 
 ## Tech stack
 
@@ -20,7 +23,7 @@ A split-screen, multi-tab network terminal with a built-in agentic AI copilot. B
 |---|---|
 | Backend | Python · FastAPI · uvicorn · paramiko · pyserial |
 | Frontend | Vanilla JS · xterm.js · HTML/CSS |
-| AI *(coming)* | Claude API · Ollama |
+| AI | Claude API (Anthropic) · Ollama (local) |
 
 ## Getting started
 
@@ -28,6 +31,7 @@ A split-screen, multi-tab network terminal with a built-in agentic AI copilot. B
 
 - Python 3.11+
 - Network access to an SSH device (or use localhost for testing)
+- Claude API key **or** [Ollama](https://ollama.ai) running locally
 
 ### Install
 
@@ -41,10 +45,8 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env — the defaults work for local use with no AI backend
+# Add your ANTHROPIC_API_KEY (or leave blank to use Ollama)
 ```
-
-The only required change for SSH-only use is leaving `SHELLMATE_HOST` and `SHELLMATE_PORT` at their defaults (`127.0.0.1:8765`). Add your `ANTHROPIC_API_KEY` when Phase 2 lands.
 
 ### Run
 
@@ -58,19 +60,24 @@ ShellMate starts a local web server and opens your browser to `http://localhost:
 
 | Action | How |
 |---|---|
-| New connection | Click **+** in the tab bar, or `Ctrl+T` |
+| New connection | Click **+ New** in the tab bar, or `Ctrl+T` |
+| Quick connect | Click a saved device tile on the welcome screen |
 | Switch tab | Click the tab, or `Ctrl+1` – `Ctrl+9` |
 | Close tab | Click **×** on the tab, or `Ctrl+W` |
-| Save a connection profile | Open connection dialog → fill hostname/username → click bookmark icon |
-| Open settings | Click the gear icon in the left sidebar |
-| View session logs | Click the list icon in the left sidebar |
-| Copy terminal text | Double-click to select a word, text copies to clipboard |
-| Paste into terminal | Right-click → confirm in the paste dialog |
+| Reorder tabs | Drag and drop |
+| Ask the AI | Type in the chat panel on the right |
+| Include all tabs in AI context | Start message with `/context all` |
+| Include a specific tab | Start message with `/context 2` |
+| Run AI-suggested command | Click **Send** on the command block |
+| Copy terminal text | `Ctrl+C` (with selection), or `Ctrl+Shift+C` |
+| Paste into terminal | `Ctrl+V` or right-click |
+| Open settings | Gear icon in the left sidebar |
+| Toggle light/dark theme | Moon icon in the left sidebar |
 
 ## Project structure
 
 ```
-mate/
+shellmate/
 ├── run.py                     # Entry point — starts server, opens browser
 ├── requirements.txt
 ├── .env.example               # Configuration template
@@ -82,32 +89,29 @@ mate/
 │   ├── connections/
 │   │   ├── manager.py         # Session lifecycle (create/track/destroy by UUID)
 │   │   ├── ssh_handler.py     # paramiko SSH interactive shell
-│   │   └── serial_handler.py  # pyserial console (Phase 4)
+│   │   └── serial_handler.py  # pyserial console
 │   ├── session/
 │   │   └── buffer.py          # Per-session terminal I/O buffer
-│   └── ai/                    # AI routing (Phase 2)
+│   └── ai/
+│       ├── router.py          # Routes to Claude or Ollama, builds session context
+│       ├── claude_client.py   # Claude API streaming client
+│       ├── ollama_client.py   # Ollama streaming client
+│       └── prompts.py         # Network engineer AI persona + context builder
 └── frontend/
     ├── index.html
     ├── css/style.css
     └── js/
         ├── connections.js     # Connection dialog + saved profiles
-        ├── tabs.js            # Tab bar management
+        ├── tabs.js            # Tab bar management + drag reorder
         ├── terminal.js        # xterm.js init, copy/paste, settings apply
+        ├── chat.js            # AI chat panel, command blocks, streaming
         ├── settings.js        # Settings panel
         └── logs.js            # Logs panel
 ```
 
-## Build phases
-
-- [x] **Phase 1** — Multi-tab SSH terminal with session management
-- [ ] **Phase 2** — Split-screen AI chat pane (Claude / Ollama)
-- [ ] **Phase 3** — AI command suggestions with one-click approval
-- [ ] **Phase 4** — Serial console support
-- [ ] **Phase 5** — Connection profiles polish, tab reordering, reconnect
-
 ## Design
 
-ShellMate uses the *Intelligent Monolith* design system — a deep space colour palette, Space Grotesk headlines, Inter UI text, and JetBrains Mono for the terminal. Built to feel like a high-performance instrument, not a SaaS dashboard.
+ShellMate uses the *Deep Space* design system — dark background, Space Grotesk headlines, Inter UI text, and JetBrains Mono for the terminal. Built to feel like a high-performance instrument, not a SaaS dashboard. A light theme is also available.
 
 ## Security
 
