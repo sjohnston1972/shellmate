@@ -1,5 +1,5 @@
 """
-session/buffer.py — Per-session terminal I/O buffer for MATE.
+session/buffer.py — Per-session terminal I/O buffer for ShellMate.
 
 Each active session gets one SessionBuffer instance.  It keeps a rolling
 window of terminal output lines (up to max_lines) using a deque, which

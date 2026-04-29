@@ -1,5 +1,5 @@
 /**
- * settings.js — Settings panel for MATE.
+ * settings.js — Settings panel for ShellMate.
  * Manages the settings overlay panel, loads/saves settings via the API,
  * and notifies other modules when settings change.
  */
@@ -223,7 +223,7 @@
     try {
       const res = await fetch('/api/settings');
       currentSettings = await res.json();
-      window.mateSettings = currentSettings;
+      window.shellmateSettings = currentSettings;
     } catch (e) {
       console.warn('Could not load settings:', e);
     }
@@ -300,9 +300,9 @@
         body:    JSON.stringify({ settings: s }),
       });
       currentSettings = await res.json();
-      window.mateSettings = currentSettings;
+      window.shellmateSettings = currentSettings;
       // Notify terminal.js to apply new settings
-      window.dispatchEvent(new CustomEvent('mate:settings-changed', { detail: currentSettings }));
+      window.dispatchEvent(new CustomEvent('shellmate:settings-changed', { detail: currentSettings }));
       closeSettings();
     } catch (e) {
       console.error('Failed to save settings:', e);

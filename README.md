@@ -1,4 +1,4 @@
-# MATE — Managed AI Terminal Environment
+# ShellMate
 
 A split-screen, multi-tab network terminal with a built-in agentic AI copilot. Built for network engineers working with Cisco switches, routers, firewalls and similar devices.
 
@@ -32,8 +32,8 @@ A split-screen, multi-tab network terminal with a built-in agentic AI copilot. B
 ### Install
 
 ```bash
-git clone https://github.com/sjohnston1972/mate.git
-cd mate
+git clone https://github.com/sjohnston1972/shellmate.git
+cd shellmate
 pip install -r requirements.txt
 ```
 
@@ -44,7 +44,7 @@ cp .env.example .env
 # Edit .env — the defaults work for local use with no AI backend
 ```
 
-The only required change for SSH-only use is leaving `MATE_HOST` and `MATE_PORT` at their defaults (`127.0.0.1:8765`). Add your `ANTHROPIC_API_KEY` when Phase 2 lands.
+The only required change for SSH-only use is leaving `SHELLMATE_HOST` and `SHELLMATE_PORT` at their defaults (`127.0.0.1:8765`). Add your `ANTHROPIC_API_KEY` when Phase 2 lands.
 
 ### Run
 
@@ -52,7 +52,7 @@ The only required change for SSH-only use is leaving `MATE_HOST` and `MATE_PORT`
 python run.py
 ```
 
-MATE starts a local web server and opens your browser to `http://localhost:8765` automatically.
+ShellMate starts a local web server and opens your browser to `http://localhost:8765` automatically.
 
 ## Usage
 
@@ -107,7 +107,7 @@ mate/
 
 ## Design
 
-MATE uses the *Intelligent Monolith* design system — a deep space colour palette, Space Grotesk headlines, Inter UI text, and JetBrains Mono for the terminal. Built to feel like a high-performance instrument, not a SaaS dashboard.
+ShellMate uses the *Intelligent Monolith* design system — a deep space colour palette, Space Grotesk headlines, Inter UI text, and JetBrains Mono for the terminal. Built to feel like a high-performance instrument, not a SaaS dashboard.
 
 ## Security
 

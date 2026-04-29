@@ -1,5 +1,5 @@
 """
-profiles.py — Connection profile persistence for MATE.
+profiles.py — Connection profile persistence for ShellMate.
 Profiles are saved to profiles/saved.json (no passwords ever stored).
 """
 import json

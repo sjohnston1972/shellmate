@@ -1,5 +1,5 @@
 """
-run.py — Entry point for MATE.
+run.py — Entry point for ShellMate.
 
 Loads configuration from .env, starts the uvicorn server, then opens
 the browser to http://localhost:<PORT> after a short delay so the server
@@ -20,7 +20,7 @@ from backend.config import HOST, PORT  # noqa: E402 — must come after load_dot
 
 
 def _open_browser() -> None:
-    """Wait 1 second then open the default browser to the MATE UI."""
+    """Wait 1 second then open the default browser to the ShellMate UI."""
     time.sleep(1)
     webbrowser.open(f"http://localhost:{PORT}")
 

@@ -1,5 +1,5 @@
 /**
- * chat.js — AI chat panel for MATE.
+ * chat.js — AI chat panel for ShellMate.
  *
  * Manages the split-screen chat pane: message rendering, WebSocket to
  * /ws/chat, backend selector, streaming token display, and command
@@ -44,7 +44,7 @@
     contextIndicator = document.getElementById('chat-context-indicator');
 
     // Load backend preference from settings
-    const s = window.mateSettings || {};
+    const s = window.shellmateSettings || {};
     const savedBackend = s.appearance && s.appearance.ai_backend;
     if (savedBackend) {
       currentBackend = savedBackend;
@@ -402,12 +402,12 @@
     }
 
     function cleanup() {
-      window.removeEventListener('mate:terminal-output', onOutput);
+      window.removeEventListener('shellmate:terminal-output', onOutput);
       clearTimeout(idleTimer);
       _outputWatcher = null;
     }
 
-    window.addEventListener('mate:terminal-output', onOutput);
+    window.addEventListener('shellmate:terminal-output', onOutput);
     // Safety timeout — give up after 30s regardless
     idleTimer = setTimeout(flush, 30000);
 

@@ -1,5 +1,5 @@
 /**
- * logs.js — Logs panel for MATE.
+ * logs.js — Logs panel for ShellMate.
  * Shows available session log files and allows downloading them.
  */
 (function () {
@@ -37,7 +37,7 @@
       const res = await fetch('/api/logs');
       const files = await res.json();
       if (files.length === 0) {
-        const settings = window.mateSettings || {};
+        const settings = window.shellshellmateSettings || {};
         const loggingEnabled = settings.logging && settings.logging.enabled;
         listEl.innerHTML = loggingEnabled
           ? '<div class="logs-empty">No log files yet. Start a session to generate logs.</div>'

@@ -1,5 +1,5 @@
 """
-connections/manager.py — Session lifecycle manager for MATE.
+connections/manager.py — Session lifecycle manager for ShellMate.
 
 SessionManager is the single source of truth for all active terminal
 sessions.  It maintains a dictionary keyed by UUID session_id, creates

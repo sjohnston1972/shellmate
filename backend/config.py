@@ -1,5 +1,5 @@
 """
-config.py — Configuration loader for MATE.
+config.py — Configuration loader for ShellMate.
 
 Reads settings from the .env file (via python-dotenv) and exposes them
 as module-level constants used throughout the backend.  Defaults are
@@ -9,8 +9,8 @@ applied when a variable is absent or empty.
 import os
 
 # Server binding
-HOST: str = os.getenv("MATE_HOST", "127.0.0.1")
-PORT: int = int(os.getenv("MATE_PORT", "8765"))
+HOST: str = os.getenv("SHELLMATE_HOST", "127.0.0.1")
+PORT: int = int(os.getenv("SHELLMATE_PORT", "8765"))
 
 # Claude API — accept either ANTHROPIC_API_KEY or CLAUDE_API_KEY
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY", "")

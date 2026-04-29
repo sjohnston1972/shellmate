@@ -1,5 +1,5 @@
 /**
- * tabs.js — Tab bar management for MATE.
+ * tabs.js — Tab bar management for ShellMate.
  *
  * Maintains an array of tab objects (one per session), handles creating,
  * switching and closing tabs, and updates the status bar.  The actual
@@ -33,6 +33,19 @@
     tabList            = document.getElementById('tab-list');
     welcomeScreen      = document.getElementById('welcome-screen');
     terminalsContainer = document.getElementById('terminals-container');
+
+    // Brand click → show welcome/home screen
+    document.getElementById('tab-bar-brand').addEventListener('click', () => {
+      // Hide all terminal containers so the welcome screen shows through
+      tabs.forEach(tab => {
+        const c = document.getElementById(tab.containerId);
+        if (c) c.classList.remove('active');
+      });
+      tabs.forEach(tab => tab.tabEl.classList.remove('active'));
+      activeTabIndex = -1;
+      welcomeScreen.classList.remove('hidden');
+      if (typeof window.renderWelcomeProfiles === 'function') window.renderWelcomeProfiles();
+    });
 
     // Keyboard shortcuts
     document.addEventListener('keydown', handleKeyboard);
@@ -134,6 +147,9 @@
    */
   function switchToTab(index) {
     if (index < 0 || index >= tabs.length) return;
+
+    // Hide welcome screen when switching to a real tab
+    welcomeScreen.classList.add('hidden');
 
     // Deactivate all tabs and hide all terminals
     tabs.forEach((tab, i) => {

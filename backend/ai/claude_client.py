@@ -1,5 +1,5 @@
 """
-claude_client.py — Streaming Claude API client for MATE.
+claude_client.py — Streaming Claude API client for ShellMate.
 Uses httpx to stream responses token by token.
 """
 import json

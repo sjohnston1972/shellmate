@@ -1,5 +1,5 @@
 """
-app.py — FastAPI application for MATE.
+app.py — FastAPI application for ShellMate.
 
 Defines all HTTP REST endpoints and WebSocket handlers.  A single global
 SessionManager instance tracks every active terminal session.  The frontend
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # Application and globals
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="MATE", description="Managed AI Terminal Environment")
+app = FastAPI(title="ShellMate", )
 
 # Single global session manager — all state lives here
 session_manager = SessionManager()

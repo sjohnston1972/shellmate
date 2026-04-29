@@ -1,8 +1,8 @@
-# MATE — Managed AI Terminal Environment
+# ShellMate
 
 ## Project overview
 
-MATE is a split-screen, multi-tab network terminal with a built-in agentic AI copilot. The left pane is a fully functional terminal (like PuTTY) for connecting to network devices via SSH or serial console, with tabs for multiple simultaneous sessions. The right pane is an AI chat interface that can see everything happening in the active terminal session — and can be made aware of all open sessions — to have a conversation about what's on screen. The AI can also suggest commands which the user can approve and inject into the live terminal session with a single click.
+ShellMate is a split-screen, multi-tab network terminal with a built-in agentic AI copilot. The left pane is a fully functional terminal (like PuTTY) for connecting to network devices via SSH or serial console, with tabs for multiple simultaneous sessions. The right pane is an AI chat interface that can see everything happening in the active terminal session — and can be made aware of all open sessions — to have a conversation about what's on screen. The AI can also suggest commands which the user can approve and inject into the live terminal session with a single click.
 
 Multi-tab is a core architectural feature, not a bolt-on. Every session has its own connection, terminal instance, and session buffer, all identified by a unique session ID. The tab bar, session management, and per-tab state must be built from Phase 1 onwards.
 
@@ -10,7 +10,7 @@ This is a tool built for network engineers working with Cisco switches, routers,
 
 ## Architecture
 
-MATE is a two-layer application:
+ShellMate is a two-layer application:
 
 1. **Python backend** (FastAPI) — handles SSH/serial connections, session buffering, AI API routing, and the command approval pipeline. Communicates with the frontend over WebSockets.
 2. **Web frontend** (HTML/JS/CSS) — served locally by the backend. Uses xterm.js for the terminal emulator and a custom chat panel for the AI. Runs in the user's browser at `http://localhost:8765`.
@@ -97,11 +97,11 @@ mate/
 ## Configuration (.env)
 
 ```env
-# MATE configuration
+# ShellMate configuration
 
 # Server
-MATE_HOST=127.0.0.1
-MATE_PORT=8765
+SHELLMATE_HOST=127.0.0.1
+SHELLMATE_PORT=8765
 
 # Claude API (optional — leave blank to disable)
 ANTHROPIC_API_KEY=
@@ -120,7 +120,7 @@ DEFAULT_BAUD_RATE=9600
 
 ## Build phases
 
-Build MATE incrementally. Each phase should produce a working application that does something useful. Do not skip ahead — complete and test each phase before moving to the next.
+Build ShellMate incrementally. Each phase should produce a working application that does something useful. Do not skip ahead — complete and test each phase before moving to the next.
 
 ### Phase 1 — Multi-tab SSH terminal (no AI yet)
 
@@ -152,7 +152,7 @@ Build MATE incrementally. Each phase should produce a working application that d
 - The tab label should auto-detect the device hostname from the CLI prompt if possible (parse for patterns like `hostname#` or `hostname>`), falling back to the display name or IP address
 - Handle disconnection per-tab: if a session drops, mark that tab visually (greyed out label, "(disconnected)" suffix) but don't remove it — the user might want to read the buffer
 
-**Test**: User can open MATE, create three tabs connecting to three different switches, switch between them freely, type commands in each, close individual tabs, and the other sessions remain unaffected.
+**Test**: User can open ShellMate, create three tabs connecting to three different switches, switch between them freely, type commands in each, close individual tabs, and the other sessions remain unaffected.
 
 ### Phase 2 — Split screen with AI chat
 
@@ -196,7 +196,7 @@ Build MATE incrementally. Each phase should produce a working application that d
 5. Serial connections use the same terminal pane and session buffer as SSH — the rest of the app is connection-agnostic
 6. Handle serial-specific quirks: send a carriage return on connect to wake the device, handle break signals
 
-**Test**: User plugs in a console cable to a Cisco switch, selects Serial connection in MATE, picks the COM port, and gets a working console session.
+**Test**: User plugs in a console cable to a Cisco switch, selects Serial connection in ShellMate, picks the COM port, and gets a working console session.
 
 ### Phase 5 — Connection profiles and polish
 
@@ -215,7 +215,7 @@ Build MATE incrementally. Each phase should produce a working application that d
 
 ## AI system prompt guidelines
 
-The AI persona in MATE should be:
+The AI persona in ShellMate should be:
 
 - A senior network engineer with deep Cisco IOS/IOS-XE/NX-OS/ASA expertise
 - Aware that it can see the live terminal session — it should reference specific output when answering
@@ -266,7 +266,7 @@ For v1, in-memory is fine. Each tab/session has its own buffer, keyed by session
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  MATE    [+ New Tab]  [Tab 1: switch01]  [Tab 2: ...]   │
+│  ShellMate  [+ New Tab]  [Tab 1: switch01]  [Tab 2: ...]   │
 ├───────────────────────────────┬───────────┬──────────────│
 │                               │ ◁ ▷ drag  │              │
 │                               │           │  AI Chat     │

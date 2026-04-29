@@ -1,5 +1,5 @@
 """
-connections/ssh_handler.py — SSH connection handler for MATE.
+connections/ssh_handler.py — SSH connection handler for ShellMate.
 
 Wraps paramiko to provide a simple interactive shell channel.  Each
 SSHHandler manages exactly one SSH connection to one device.  The caller

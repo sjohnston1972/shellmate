@@ -1,5 +1,5 @@
 /**
- * terminal.js — xterm.js terminal initialisation for MATE.
+ * terminal.js — xterm.js terminal initialisation for ShellMate.
  *
  * Each call to initTerminal() creates an independent xterm.js Terminal
  * instance, opens it in a new <div>, and connects it to the backend via
@@ -7,13 +7,16 @@
  *
  * Terminal appearance is driven by settings loaded from /api/settings
  * (via settings.js).  When the user saves new settings, a
- * 'mate:settings-changed' event is fired and all open terminals are updated
+ * 'shellmate:settings-changed' event is fired and all open terminals are updated
  * live without requiring a page reload.
  *
  * Copy / paste behaviour:
- *   - Double-click on the terminal copies the current selection to clipboard.
- *   - Right-click on the terminal pastes from clipboard into the session
- *     (respects the right_click_paste setting).
+ *   - Select text with mouse → auto-copies if copyOnSelect is enabled in settings.
+ *   - Ctrl+Shift+C  → copy current selection to clipboard.
+ *   - Ctrl+C        → copy if text is selected, otherwise sends ^C to device.
+ *   - Ctrl+V / Ctrl+Shift+V → paste from clipboard (shows confirmation modal).
+ *   - Double-click  → select word and copy.
+ *   - Right-click   → paste from clipboard (respects right_click_paste setting).
  *
  * Inactive terminals are hidden with CSS (display:none on the container)
  * but the Terminal and WebSocket objects remain alive — so background
@@ -35,8 +38,8 @@
    * Build xterm.js constructor options from the current settings.
    */
   function _buildOptions() {
-    const s = (window.mateSettings || {}).terminal || {};
-    const a  = (window.mateSettings || {}).appearance || {};
+    const s = (window.shellmateSettings || {}).terminal || {};
+    const a  = (window.shellmateSettings || {}).appearance || {};
     const schemeName = a.color_scheme || 'deep_space';
     const schemeObj  = typeof window.getColorScheme === 'function'
       ? window.getColorScheme(schemeName)
@@ -54,6 +57,7 @@
       cursorBlink:      s.cursor_blink     !== false,
       cursorStyle:      s.cursor_style     || 'block',
       scrollback:       s.scrollback_lines || 5000,
+      copyOnSelect:     !!s.copy_on_select,
       allowProposedApi: true,
     };
   }
@@ -138,7 +142,7 @@
           _bufferLines += (msg.data.match(/\n/g) || []).length;
           if (typeof window.updateStatusBar === 'function') window.updateStatusBar();
           // Notify chat.js so it can feed command output back to the AI
-          window.dispatchEvent(new CustomEvent('mate:terminal-output', {
+          window.dispatchEvent(new CustomEvent('shellmate:terminal-output', {
             detail: { sessionId, data: msg.data, totalLines: _bufferLines }
           }));
           break;
@@ -180,25 +184,17 @@
     // 7. Copy / paste behaviour
     // ------------------------------------------------------------------
 
-    // Double-click: copy selected text to clipboard.
-    // xterm.js finishes its own word-selection logic asynchronously, so we
-    // wait one tick before reading the selection.
-    container.addEventListener('dblclick', () => {
-      setTimeout(() => {
-        const sel = terminal.getSelection();
-        if (sel) {
-          navigator.clipboard.writeText(sel).then(() => {
-            window._showCopyToast && window._showCopyToast(sel);
-          }).catch(() => {});
-        }
-      }, 50);
-    });
+    function _copySelection() {
+      const sel = terminal.getSelection();
+      if (!sel) return false;
+      navigator.clipboard.writeText(sel).then(() => {
+        terminal.clearSelection();
+        window._showCopyToast && window._showCopyToast(sel);
+      }).catch(() => {});
+      return true;
+    }
 
-    // Right-click: show paste confirmation modal before sending to session
-    container.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      const settings = window.mateSettings || {};
-      if (settings.terminal && settings.terminal.right_click_paste === false) return;
+    function _pasteFromClipboard() {
       navigator.clipboard.readText().then(text => {
         if (!text) return;
         window._showPasteModal && window._showPasteModal(text, () => {
@@ -207,6 +203,46 @@
           }
         });
       }).catch(() => {});
+    }
+
+    // Keyboard shortcuts — intercept before xterm.js handles them.
+    // Return false = we handle it (suppress default). Return true = let xterm handle it.
+    terminal.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown') return true;
+
+      // Ctrl+Shift+C → copy
+      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        _copySelection();
+        return false;
+      }
+
+      // Ctrl+Shift+V or Ctrl+V → paste
+      if ((e.ctrlKey && e.shiftKey && e.key === 'V') ||
+          (e.ctrlKey && !e.shiftKey && e.key === 'v')) {
+        _pasteFromClipboard();
+        return false;
+      }
+
+      // Ctrl+C with an active selection → copy instead of sending ^C
+      if (e.ctrlKey && !e.shiftKey && e.key === 'c' && terminal.hasSelection()) {
+        _copySelection();
+        return false;
+      }
+
+      return true;
+    });
+
+    // Double-click: select word then copy (xterm handles selection asynchronously)
+    container.addEventListener('dblclick', () => {
+      setTimeout(() => { _copySelection(); }, 50);
+    });
+
+    // Right-click: paste from clipboard
+    container.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const settings = window.shellmateSettings || {};
+      if (settings.terminal && settings.terminal.right_click_paste === false) return;
+      _pasteFromClipboard();
     });
 
     // ------------------------------------------------------------------
@@ -252,7 +288,7 @@
   // Live settings update — apply new settings to all open terminals
   // -------------------------------------------------------------------------
 
-  window.addEventListener('mate:settings-changed', (e) => {
+  window.addEventListener('shellmate:settings-changed', (e) => {
     const detail = e.detail || {};
     const s      = detail.terminal   || {};
     const a      = detail.appearance || {};
@@ -272,7 +308,8 @@
       if (s.font_family)  terminal.options.fontFamily   = s.font_family;
       if (s.line_height)  terminal.options.lineHeight   = s.line_height;
       if (s.cursor_style) terminal.options.cursorStyle  = s.cursor_style;
-      terminal.options.cursorBlink = s.cursor_blink !== false;
+      terminal.options.cursorBlink  = s.cursor_blink !== false;
+      terminal.options.copyOnSelect = !!s.copy_on_select;
       try { fitAddon.fit(); } catch (_) {}
     });
   });

@@ -1,5 +1,5 @@
 """
-ollama_client.py — Streaming Ollama API client for MATE.
+ollama_client.py — Streaming Ollama API client for ShellMate.
 Connects to a local Ollama instance and streams responses.
 """
 import json

@@ -1,5 +1,5 @@
 /**
- * connections.js — Connection dialog and profile management for MATE.
+ * connections.js — Connection dialog and profile management for ShellMate.
  *
  * Handles showing/hiding the modal, reading form fields, POSTing to
  * the backend to create a new session, and saving/loading connection profiles.
@@ -102,6 +102,9 @@
       const profiles = await res.json();
       grid.innerHTML = '';
       profiles.forEach(p => {
+        const wrap = document.createElement('div');
+        wrap.className = 'welcome-profile-wrap';
+
         const card = document.createElement('button');
         card.className = 'welcome-profile-card';
         card.title = `${p.hostname}:${p.port} (${p.connection_type.toUpperCase()})`;
@@ -113,7 +116,20 @@
           <span class="welcome-profile-host">${p.hostname}</span>
         `;
         card.addEventListener('click', () => showConnectionDialog(p));
-        grid.appendChild(card);
+
+        const del = document.createElement('button');
+        del.className = 'welcome-profile-delete';
+        del.title = 'Remove';
+        del.innerHTML = '<span class="material-symbols-outlined">close</span>';
+        del.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await fetch(`/api/profiles/${p.id}`, { method: 'DELETE' });
+          renderWelcomeProfiles();
+        });
+
+        wrap.appendChild(card);
+        wrap.appendChild(del);
+        grid.appendChild(wrap);
       });
     } catch (e) { /* silently skip if API unavailable */ }
   }
@@ -250,7 +266,8 @@
     connectSpinner.classList.toggle('hidden', !loading);
   }
 
-  window.showConnectionDialog = showConnectionDialog;
-  window.hideConnectionDialog = hideConnectionDialog;
+  window.showConnectionDialog  = showConnectionDialog;
+  window.hideConnectionDialog  = hideConnectionDialog;
+  window.renderWelcomeProfiles = renderWelcomeProfiles;
 
 })();

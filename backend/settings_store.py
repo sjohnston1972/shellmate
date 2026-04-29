@@ -1,5 +1,5 @@
 """
-settings_store.py — Application settings persistence for MATE.
+settings_store.py — Application settings persistence for ShellMate.
 Settings are stored in settings.json at the project root.
 """
 import json

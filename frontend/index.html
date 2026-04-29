@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MATE — Managed AI Terminal Environment</title>
+  <title>ShellMate</title>
 
   <!-- Google Fonts — UI fonts + terminal monospace fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -32,9 +32,6 @@
       <a href="#" id="sidebar-link-sessions" class="sidebar-link active" title="Sessions">
         <span class="material-symbols-outlined">terminal</span>
       </a>
-      <a href="#" class="sidebar-link" title="Network Map">
-        <span class="material-symbols-outlined">hub</span>
-      </a>
       <a href="#" id="sidebar-link-logs" class="sidebar-link" title="Logs">
         <span class="material-symbols-outlined">list_alt</span>
       </a>
@@ -43,6 +40,9 @@
       </a>
     </nav>
     <div id="sidebar-bottom">
+      <button id="btn-theme-toggle" class="sidebar-link" title="Toggle light/dark theme">
+        <span class="material-symbols-outlined" id="theme-icon">light_mode</span>
+      </button>
       <a href="#" class="sidebar-link" title="Docs">
         <span class="material-symbols-outlined">description</span>
       </a>
@@ -61,10 +61,11 @@
          TAB BAR
     ================================================================ -->
     <header id="tab-bar">
-      <div id="tab-bar-brand">MATE</div>
+      <button id="tab-bar-brand" title="Home / Quick connect">ShellMate</button>
       <div id="tab-list"></div>
       <button id="btn-new-tab" title="New connection (Ctrl+T)">
         <span class="material-symbols-outlined">add</span>
+        New
       </button>
     </header>
 
@@ -78,8 +79,8 @@
         <!-- Welcome screen shown when no tabs are open -->
         <div id="welcome-screen">
           <div id="welcome-content">
-            <h1>MATE</h1>
-            <p class="welcome-tagline">Managed AI Terminal Environment</p>
+            <h1>ShellMate</h1>
+            
 
             <!-- Saved session quick-launch grid -->
             <div id="welcome-profiles-grid"></div>
@@ -110,7 +111,7 @@
         <div id="chat-header">
           <div id="chat-header-left">
             <span class="material-symbols-outlined" style="font-size:16px;color:var(--primary)">smart_toy</span>
-            <span id="chat-title">MATE Chat</span>
+            <span id="chat-title">ShellMate Chat</span>
             <span id="chat-context-indicator" title="Current AI context"></span>
           </div>
           <div id="chat-header-right">
@@ -128,7 +129,7 @@
         <div id="chat-messages">
           <div class="chat-welcome">
             <span class="material-symbols-outlined" style="font-size:32px;color:var(--primary);opacity:0.4">smart_toy</span>
-            <p>Ask me anything about your network devices.</p>
+            <p>Ask about your terminals.</p>
             <p class="chat-welcome-hint">I can see your terminal output and suggest commands.</p>
           </div>
         </div>
@@ -145,7 +146,7 @@
         <div id="chat-input-area">
           <textarea
             id="chat-input"
-            placeholder="Ask about your network&#8230; (Enter to send, Shift+Enter for newline)"
+            placeholder=""
             rows="1"
           ></textarea>
           <button id="chat-send" class="btn-primary" title="Send (Enter)">
@@ -446,7 +447,7 @@ GigEth0/2     unassigned    YES unset  down     down
 
   <!-- ================================================================
        SCRIPTS — order matters: settings first (loads settings into
-       window.mateSettings), then connections → tabs → terminal
+       window.shellshellmateSettings), then connections → tabs → terminal
   ================================================================ -->
   <script src="/static/js/connections.js"></script>
   <script src="/static/js/tabs.js"></script>
@@ -516,6 +517,31 @@ GigEth0/2     unassigned    YES unset  down     down
       }
 
       window._showCopyToast = show;
+    })();
+
+    // ----------------------------------------------------------------
+    // Light / dark theme toggle
+    // ----------------------------------------------------------------
+    (function () {
+      const btn  = document.getElementById('btn-theme-toggle');
+      const icon = document.getElementById('theme-icon');
+      const root = document.documentElement;
+
+      function applyTheme(theme) {
+        root.setAttribute('data-theme', theme);
+        icon.textContent = theme === 'light' ? 'dark_mode' : 'light_mode';
+        btn.title = theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
+        localStorage.setItem('shellmate-theme', theme);
+      }
+
+      // Restore saved preference, defaulting to dark
+      const saved = localStorage.getItem('shellmate-theme') || 'dark';
+      applyTheme(saved);
+
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        applyTheme(root.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
+      });
     })();
   </script>
 

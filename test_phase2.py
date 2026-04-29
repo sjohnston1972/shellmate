@@ -1,5 +1,5 @@
 """
-test_phase2.py — Playwright UI tests for MATE Phase 2 (AI chat pane).
+test_phase2.py — Playwright UI tests for ShellMate Phase 2 (AI chat pane).
 Tests the split-screen layout, chat UI, WebSocket streaming, command blocks,
 context indicator, and divider drag.
 """
