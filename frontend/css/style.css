@@ -1166,6 +1166,11 @@ a {
   color: rgba(70,69,85,0.5);
 }
 
+#status-context { transition: color 0.4s; }
+#status-context.ctx-green { color: #4ade80; }
+#status-context.ctx-amber { color: #fbbf24; }
+#status-context.ctx-red   { color: #f87171; }
+
 #status-connection {
   color: rgba(229,226,225,0.7);
 }

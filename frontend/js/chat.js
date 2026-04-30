@@ -60,6 +60,7 @@
 
     backendSelect.addEventListener('change', () => {
       currentBackend = backendSelect.value;
+      updateContextIndicator();
     });
 
     document.getElementById('chat-clear').addEventListener('click', clearChat);
@@ -231,6 +232,7 @@
     sendBtn.disabled = false;
     inputEl.focus();
     scrollToBottom();
+    updateContextIndicator();
   }
 
   function sendSilent(message, sessionId) {
@@ -614,16 +616,54 @@
   // Context indicator
   // -----------------------------------------------------------------------
 
-  function updateContextIndicator(tab) {
-    if (!contextIndicator) return;
-    const activeTab = tab || (typeof window.getActiveTab === 'function' ? window.getActiveTab() : null);
-    if (activeTab) {
-      contextIndicator.textContent = activeTab.label || 'active session';
-      contextIndicator.title       = `AI context: ${activeTab.label}`;
-    } else {
-      contextIndicator.textContent = 'no session';
-    }
+  // -----------------------------------------------------------------------
+  // Context size estimator
+  // -----------------------------------------------------------------------
+  // Claude Sonnet context window (tokens).  Ollama models vary but 32k is a
+  // safe conservative estimate for the local models most people run.
+  const CONTEXT_LIMITS = { claude: 200_000, ollama: 32_000 };
+
+  function _estimateTokens() {
+    // Chat history chars (tracked in jira.js via addJiraChatMessage)
+    const history = typeof window.getJiraChatHistory === 'function'
+      ? window.getJiraChatHistory() : [];
+    const chatChars = history.reduce((s, m) => s + (m.text || '').length, 0);
+
+    // Active terminal buffer — read the last 200 lines (matches backend's get_text(200))
+    const activeTab = typeof window.getActiveTab === 'function' ? window.getActiveTab() : null;
+    const bufChars  = (activeTab && activeTab.getContextChars) ? activeTab.getContextChars(200) : 0;
+
+    // Fixed overhead: system prompt + per-request framing (~900 tokens)
+    return 900 + Math.round((chatChars + bufChars) / 4);
   }
+
+  function updateContextIndicator(tab) {
+    // Update the chat-header label (shows active tab name)
+    if (contextIndicator) {
+      const activeTab = tab || (typeof window.getActiveTab === 'function' ? window.getActiveTab() : null);
+      contextIndicator.textContent = activeTab ? (activeTab.label || 'active session') : 'no session';
+    }
+
+    // Update the status-bar context meter
+    const statusEl = document.getElementById('status-context');
+    if (!statusEl) return;
+
+    const limit  = CONTEXT_LIMITS[currentBackend] || 200_000;
+    const tokens = _estimateTokens();
+    const pct    = Math.min(100, Math.round((tokens / limit) * 100));
+    const kTok   = tokens >= 1_000 ? `${Math.round(tokens / 1_000)}k` : `${tokens}`;
+
+    // Dot character + label
+    const dot = '●';
+    statusEl.textContent = `${dot} Context: ~${kTok} tok`;
+    statusEl.title = `~${tokens.toLocaleString()} estimated tokens · ${pct}% of ${Math.round(limit/1000)}k ${currentBackend} limit.\nGreen <25% · Amber 25–65% · Red >65%`;
+
+    statusEl.className = pct < 25 ? 'ctx-green'
+                       : pct < 65 ? 'ctx-amber'
+                       :            'ctx-red';
+  }
+
+  window.updateContextStatus = updateContextIndicator;
 
   // -----------------------------------------------------------------------
   // Helpers
@@ -634,6 +674,9 @@
     streamingBubble      = null;
     isStreaming          = false;
     sendBtn.disabled     = false;
+    // Reset Jira chat history so context estimate resets too
+    if (typeof window._clearJiraChatHistory === 'function') window._clearJiraChatHistory();
+    updateContextIndicator();
   }
 
   /**

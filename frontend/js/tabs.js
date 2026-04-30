@@ -107,6 +107,7 @@
       fitAddon:         termData.fitAddon,
       websocket:        termData.websocket,
       getBufferLines:   termData.getBufferLines,
+      getContextChars:  termData.getContextChars,
       isConnected:      true,
       containerId:      termData.containerId,
       tabEl,
@@ -294,6 +295,8 @@
 
     const lines = active.getBufferLines ? active.getBufferLines() : 0;
     bufferEl.textContent = `Buffer: ${lines.toLocaleString()}L`;
+
+    if (typeof window.updateContextStatus === 'function') window.updateContextStatus();
   }
 
   // -------------------------------------------------------------------------

@@ -232,9 +232,28 @@
       return true;
     });
 
-    // Double-click: select word then copy (xterm handles selection asynchronously)
-    container.addEventListener('dblclick', () => {
-      setTimeout(() => { _copySelection(); }, 50);
+    // Double-click: copy the word xterm selects.
+    // Strategy: set a flag on the SECOND mousedown (detail===2, before xterm
+    // processes the click), then read the selection inside onSelectionChange
+    // which fires the instant xterm has committed the word selection.
+    let _pendingDblClickCopy = false;
+
+    container.addEventListener('mousedown', (e) => {
+      if (e.detail === 2) {
+        _pendingDblClickCopy = true;
+        // Safety reset in case onSelectionChange never fires
+        setTimeout(() => { _pendingDblClickCopy = false; }, 500);
+      }
+    });
+
+    terminal.onSelectionChange(() => {
+      if (!_pendingDblClickCopy) return;
+      _pendingDblClickCopy = false;
+      const sel = terminal.getSelection();
+      if (!sel) return;
+      navigator.clipboard.writeText(sel)
+        .then(() => { window._showCopyToast && window._showCopyToast(sel); })
+        .catch(() => {});
     });
 
     // Right-click: paste from clipboard
@@ -281,7 +300,20 @@
     // ------------------------------------------------------------------
     _instances[sessionId] = { terminal, fitAddon, websocket, containerId };
 
-    return { terminal, fitAddon, websocket, containerId, getBufferLines: () => _bufferLines };
+    // Returns the character count of the last `n` lines — matches what the
+    // backend sends to the AI via buf.get_text(n), so the context estimate is accurate.
+    function getContextChars(n = 200) {
+      const buf = terminal.buffer.active;
+      const start = Math.max(0, buf.length - n);
+      let chars = 0;
+      for (let i = start; i < buf.length; i++) {
+        const line = buf.getLine(i);
+        if (line) chars += line.translateToString(true).trimEnd().length + 1; // +1 for newline
+      }
+      return chars;
+    }
+
+    return { terminal, fitAddon, websocket, containerId, getBufferLines: () => _bufferLines, getContextChars };
   }
 
   // -------------------------------------------------------------------------

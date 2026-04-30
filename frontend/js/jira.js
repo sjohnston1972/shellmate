@@ -18,8 +18,12 @@
   // -------------------------------------------------------------------------
   const chatHistory = [];
 
-  window.addJiraChatMessage = (role, text) => chatHistory.push({ role, text });
-  window.getJiraChatHistory = () => chatHistory.slice();
+  window.addJiraChatMessage = (role, text) => {
+    chatHistory.push({ role, text });
+    if (typeof window.updateContextStatus === 'function') window.updateContextStatus();
+  };
+  window.getJiraChatHistory  = () => chatHistory.slice();
+  window._clearJiraChatHistory = () => { chatHistory.length = 0; };
 
   // -------------------------------------------------------------------------
   // State
