@@ -117,6 +117,13 @@
     const text = inputEl.value.trim();
     if (!text) return;
 
+    // Jira shortcut — "send to jira" / "/jira" opens the conclude-session modal
+    if (/^\/jira\b|send\s+to\s+jira|log\s+to\s+jira|create\s+jira/i.test(text)) {
+      inputEl.value = '';
+      if (typeof window.openJiraModal === 'function') window.openJiraModal();
+      return;
+    }
+
     // Parse context commands
     let message = text;
     let mode = contextMode;
@@ -137,6 +144,9 @@
     // Get active session id from tabs.js
     const activeTab = typeof window.getActiveTab === 'function' ? window.getActiveTab() : null;
     const sessionId = activeTab ? activeTab.sessionId : null;
+
+    // Record in Jira chat history
+    if (typeof window.addJiraChatMessage === 'function') window.addJiraChatMessage('user', text);
 
     // Render user bubble
     appendUserBubble(text);
@@ -207,8 +217,11 @@
   function finishStreaming() {
     if (streamingBubble) {
       streamingBubble.classList.remove('streaming');
-      // Full parse: replaces the streaming text with proper command blocks etc.
       if (streamingBubble.dataset.raw) {
+        // Record AI response in Jira history before rendering strips it
+        if (typeof window.addJiraChatMessage === 'function') {
+          window.addJiraChatMessage('ai', streamingBubble.dataset.raw);
+        }
         renderBubbleContent(streamingBubble);
         wireCommandBlocks(streamingBubble);
       }

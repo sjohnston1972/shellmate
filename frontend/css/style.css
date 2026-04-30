@@ -82,6 +82,7 @@
 [data-theme="light"] .side-panel                 { background: rgba(238,238,241,0.98); }
 [data-theme="light"] #btn-new-tab                { color: #fff; }
 [data-theme="light"] #btn-new-tab:hover          { color: #fff; opacity: 0.88; }
+[data-theme="light"] .chat-pill-btn              { color: #fff; }
 [data-theme="light"] #copy-toast                 { box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
 [data-theme="light"] .btn-secondary              { color: rgba(28,27,34,0.75); border-color: rgba(28,27,34,0.25); }
 [data-theme="light"] .btn-secondary:hover        { color: var(--on-surface); background: var(--surface-high); }
@@ -389,22 +390,22 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 28px;
-  padding: 0 12px 0 8px;
+  height: 24px;
+  padding: 0 10px 0 7px;
   background: var(--primary-container);
   color: #fff;
   border-radius: var(--radius-full);
   white-space: nowrap;
   flex-shrink: 0;
   font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.03em;
   transition: opacity 0.15s, transform 0.1s;
 }
 
 #btn-new-tab .material-symbols-outlined {
-  font-size: 16px;
+  font-size: 13px;
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
 }
 
@@ -416,6 +417,40 @@ a {
 #btn-new-tab:active {
   transform: translateY(0);
   opacity: 1;
+}
+
+/* Chat header pill buttons — filled accent pills matching #btn-new-tab */
+.chat-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 9px 0 6px;
+  background: var(--primary-container);
+  color: #fff;
+  border-radius: var(--radius-full);
+  border: none;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.chat-pill-btn .material-symbols-outlined {
+  font-size: 13px;
+}
+
+.chat-pill-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.chat-pill-btn:active {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* --------------------------------------------------------------------------
@@ -2006,4 +2041,396 @@ a {
 #copy-toast .material-symbols-outlined {
   font-size: 14px;
   color: var(--secondary);
+}
+
+/* --------------------------------------------------------------------------
+   Jira / Conclude Session modal
+   -------------------------------------------------------------------------- */
+#jira-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  z-index: 8000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#jira-overlay.hidden { display: none; }
+
+#jira-dialog {
+  background: var(--panel);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--outline);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  width: 540px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Mode toggle */
+#jira-mode-toggle {
+  display: flex;
+  border-bottom: 1px solid var(--outline);
+  flex-shrink: 0;
+}
+
+.jira-mode-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--on-surface-muted);
+  font-family: 'Inter', sans-serif;
+  font-size: var(--ui-font-size, 13px);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  margin-bottom: -1px;
+}
+
+.jira-mode-btn .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.jira-mode-btn:hover {
+  color: var(--on-surface);
+}
+
+.jira-mode-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary-container);
+}
+
+#jira-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--outline);
+  flex-shrink: 0;
+}
+
+#jira-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#jira-header-left h2 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--on-surface);
+  margin: 0;
+}
+
+#jira-body {
+  padding: 18px 20px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.jira-desc {
+  font-size: calc(var(--ui-font-size, 14px) - 1px);
+  color: var(--on-surface-dim);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.jira-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.jira-form-row {
+  display: flex;
+  gap: 14px;
+}
+
+.jira-form-row .jira-form-group {
+  flex: 1;
+}
+
+.jira-label {
+  font-size: calc(var(--ui-font-size, 14px) - 2px);
+  font-weight: 500;
+  color: var(--on-surface-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.jira-label .optional {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.6;
+}
+
+.jira-input,
+.jira-textarea,
+.jira-select {
+  background: var(--surface-high);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  color: var(--on-surface);
+  font-family: 'Inter', sans-serif;
+  font-size: var(--ui-font-size, 13px);
+  padding: 8px 10px;
+  transition: border-color 0.12s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.jira-textarea {
+  resize: vertical;
+  min-height: 72px;
+  line-height: 1.45;
+}
+
+.jira-input:focus,
+.jira-textarea:focus,
+.jira-select:focus {
+  outline: none;
+  border-color: var(--primary-container);
+}
+
+.jira-badge {
+  background: rgba(195,192,255,0.1);
+  border: 1px solid rgba(195,192,255,0.2);
+  border-radius: var(--radius-sm);
+  color: var(--primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  letter-spacing: 0.05em;
+}
+
+.jira-search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.jira-search-row .jira-input {
+  flex: 1;
+}
+
+.jira-search-go {
+  flex-shrink: 0;
+  padding: 7px 12px;
+}
+
+.jira-search-results {
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.jira-search-loading,
+.jira-search-empty,
+.jira-search-error {
+  padding: 12px 14px;
+  font-size: calc(var(--ui-font-size, 14px) - 1px);
+  color: var(--on-surface-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jira-search-error { color: var(--error); }
+
+.jira-spinner-sm {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--outline);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.jira-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 14px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--outline);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.jira-result-item:last-child { border-bottom: none; }
+
+.jira-result-item:hover {
+  background: var(--surface-high);
+}
+
+.jira-result-key {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  flex-shrink: 0;
+  min-width: 64px;
+}
+
+.jira-result-summary {
+  font-size: calc(var(--ui-font-size, 14px) - 1px);
+  color: var(--on-surface);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jira-result-status {
+  font-size: 11px;
+  color: var(--on-surface-muted);
+  flex-shrink: 0;
+  background: var(--surface-highest);
+  border-radius: var(--radius-full);
+  padding: 2px 7px;
+}
+
+.jira-selected-ticket {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(195,192,255,0.07);
+  border: 1px solid rgba(195,192,255,0.25);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.jira-selected-ticket > .material-symbols-outlined {
+  font-size: 18px;
+  color: var(--secondary);
+  flex-shrink: 0;
+}
+
+.jira-selected-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.jira-selected-key {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.jira-selected-summary {
+  font-size: calc(var(--ui-font-size, 14px) - 1px);
+  color: var(--on-surface-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jira-tabs-label {
+  font-size: calc(var(--ui-font-size, 14px) - 2px);
+  color: var(--on-surface-dim);
+  margin: 0 0 6px;
+}
+
+.jira-tabs-none {
+  font-size: calc(var(--ui-font-size, 14px) - 1px);
+  color: var(--on-surface-muted);
+  margin: 0;
+  font-style: italic;
+}
+
+.jira-tab-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.jira-tab-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--surface-highest);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-full);
+  padding: 3px 10px 3px 6px;
+  font-size: 12px;
+  color: var(--on-surface-dim);
+}
+
+.jira-tab-pill .material-symbols-outlined {
+  font-size: 13px;
+  color: var(--primary);
+}
+
+.jira-error {
+  background: rgba(255,180,171,0.08);
+  border: 1px solid rgba(255,180,171,0.3);
+  border-radius: var(--radius-md);
+  color: var(--error);
+  font-size: calc(var(--ui-font-size, 14px) - 1px);
+  padding: 8px 12px;
+}
+
+.jira-success {
+  background: rgba(183,200,225,0.08);
+  border: 1px solid rgba(183,200,225,0.25);
+  border-radius: var(--radius-md);
+  color: var(--secondary);
+  font-size: calc(var(--ui-font-size, 14px) - 1px);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jira-success a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.jira-success .material-symbols-outlined {
+  font-size: 18px;
+  color: var(--secondary);
+  flex-shrink: 0;
+}
+
+#jira-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--outline);
+  flex-shrink: 0;
+}
+
+[data-theme="light"] #jira-dialog {
+  background: rgba(235,235,238,0.97);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.2);
 }

@@ -23,7 +23,7 @@ import logging
 import re
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -33,7 +33,7 @@ from backend.connections.manager import SessionManager
 from backend.profiles import get_profiles, save_profile, delete_profile
 from backend.settings_store import get_settings, update_settings
 from backend.ai.router import stream_chat
-from backend.config import DEFAULT_AI_BACKEND
+from backend.config import DEFAULT_AI_BACKEND, JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +195,98 @@ async def get_app_settings() -> dict:
 async def save_app_settings(request: UpdateSettingsRequest) -> dict:
     """Persist updated settings and return the merged result."""
     return update_settings(request.settings)
+
+
+# ---------------------------------------------------------------------------
+# REST — Jira integration
+# ---------------------------------------------------------------------------
+
+@app.get("/api/jira/config")
+async def jira_config() -> dict:
+    """Return whether Jira is configured and the project key."""
+    configured = bool(JIRA_URL and JIRA_USER_EMAIL and JIRA_API_TOKEN and JIRA_PROJECT_KEY)
+    return {"configured": configured, "project_key": JIRA_PROJECT_KEY, "jira_url": JIRA_URL}
+
+
+@app.get("/api/jira/search")
+async def jira_search(q: str = "") -> list[dict]:
+    """Search Jira issues by text within the configured project."""
+    if not all([JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY]):
+        raise HTTPException(400, "Jira not configured")
+    # Allow empty query — Jira picker returns recent issues
+    from backend.jira_client import search_issues
+    try:
+        return await search_issues(JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY, q.strip())
+    except Exception as e:
+        raise HTTPException(502, f"Jira search error: {e}")
+
+
+@app.get("/api/jira/issue-types")
+async def jira_issue_types() -> list[str]:
+    """Return available issue types for the configured project."""
+    if not all([JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY]):
+        raise HTTPException(400, "Jira not configured")
+    from backend.jira_client import get_issue_types
+    try:
+        return await get_issue_types(JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY)
+    except Exception as e:
+        raise HTTPException(502, f"Jira error: {e}")
+
+
+@app.post("/api/jira/session")
+async def post_session_to_jira(request: Request) -> dict:
+    """Build a rich ADF document from session buffers + chat history and post to Jira."""
+    if not all([JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY]):
+        raise HTTPException(400, "Jira not configured — add JIRA_* vars to .env")
+
+    body             = await request.json()
+    summary          = body.get("summary", "ShellMate Session").strip() or "ShellMate Session"
+    description      = body.get("description", "")
+    issue_type       = body.get("issue_type", "Task")
+    open_session_ids = body.get("open_session_ids") or []
+    chat_messages    = body.get("chat_messages") or []
+    existing_key     = (body.get("existing_issue_key") or "").strip().upper()
+
+    # Collect terminal buffers from the session manager
+    sessions = []
+    for sid in open_session_ids:
+        sess = session_manager.get_session(sid)
+        if not sess:
+            continue
+        buf = sess.get("buffer")
+        sessions.append({
+            "label":           sess.get("display_label") or sess.get("hostname", sid[:8]),
+            "hostname":        sess.get("hostname", ""),
+            "connection_type": sess.get("connection_type", "ssh"),
+            "buffer_text":     buf.get_text(500) if buf else "",
+        })
+
+    from backend.jira_client import build_adf, create_issue, add_comment
+    adf = build_adf(description, sessions, chat_messages)
+
+    try:
+        if existing_key:
+            # Add session as a comment on an existing issue
+            await add_comment(JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN, existing_key, adf)
+            return {
+                "issue_key": existing_key,
+                "url": f"{JIRA_URL.rstrip('/')}/browse/{existing_key}",
+                "mode": "comment",
+            }
+        else:
+            # Create a brand new issue
+            result = await create_issue(
+                JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN,
+                JIRA_PROJECT_KEY, summary, adf, issue_type,
+            )
+            issue_key = result.get("key", "")
+            return {
+                "issue_key": issue_key,
+                "url": f"{JIRA_URL.rstrip('/')}/browse/{issue_key}",
+                "mode": "created",
+            }
+    except Exception as e:
+        raise HTTPException(502, f"Jira API error: {e}")
 
 
 # ---------------------------------------------------------------------------

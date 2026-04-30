@@ -119,8 +119,13 @@
               <option value="ollama">Ollama</option>
               <option value="claude" selected>Claude</option>
             </select>
-            <button id="chat-clear" class="icon-btn" title="Clear chat">
+            <button id="btn-conclude-session" class="chat-pill-btn" title="Conclude session — log to Jira">
+              <span class="material-symbols-outlined">summarize</span>
+              Conclude
+            </button>
+            <button id="chat-clear" class="chat-pill-btn" title="Clear chat">
               <span class="material-symbols-outlined">delete_sweep</span>
+              Clear
             </button>
           </div>
         </div>
@@ -458,6 +463,106 @@ GigEth0/2     unassigned    YES unset  down     down
   </div>
 
   <!-- ================================================================
+       JIRA SESSION MODAL
+  ================================================================ -->
+  <div id="jira-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="jira-modal-title">
+    <div id="jira-dialog">
+      <div id="jira-header">
+        <div id="jira-header-left">
+          <span class="material-symbols-outlined" style="color:var(--primary)">summarize</span>
+          <h2 id="jira-modal-title">Conclude Session</h2>
+        </div>
+        <button id="jira-close" class="icon-btn" aria-label="Close">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <!-- Mode toggle -->
+      <div id="jira-mode-toggle">
+        <button id="jira-mode-new" class="jira-mode-btn active">
+          <span class="material-symbols-outlined">add_circle</span>
+          New ticket
+        </button>
+        <button id="jira-mode-existing" class="jira-mode-btn">
+          <span class="material-symbols-outlined">search</span>
+          Add to existing
+        </button>
+      </div>
+
+      <div id="jira-body">
+        <p class="jira-desc">Terminal output from all open tabs and the full AI conversation will be included.</p>
+
+        <!-- NEW TICKET fields -->
+        <div id="jira-new-fields">
+          <div class="jira-form-group">
+            <label class="jira-label" for="jira-summary">Ticket title</label>
+            <input type="text" id="jira-summary" class="jira-input" placeholder="e.g. IPSec tunnel investigation — DC1-R1 / DC2-R2" />
+          </div>
+
+          <div class="jira-form-row">
+            <div class="jira-form-group">
+              <label class="jira-label" for="jira-issue-type">Issue type</label>
+              <select id="jira-issue-type" class="jira-select">
+                <option value="Task" selected>Task</option>
+                <option value="Bug">Bug</option>
+                <option value="Story">Story</option>
+              </select>
+            </div>
+            <div class="jira-form-group">
+              <label class="jira-label">Project</label>
+              <div id="jira-project-badge" class="jira-badge">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- EXISTING TICKET search -->
+        <div id="jira-search-fields" class="hidden">
+          <div class="jira-form-group">
+            <label class="jira-label" for="jira-search-input">Search tickets</label>
+            <div class="jira-search-row">
+              <input type="text" id="jira-search-input" class="jira-input" placeholder="e.g. IPSec or SSR-42" />
+              <button id="jira-search-btn" class="btn-secondary jira-search-go">
+                <span class="material-symbols-outlined">search</span>
+              </button>
+            </div>
+          </div>
+          <div id="jira-search-results" class="jira-search-results hidden"></div>
+          <div id="jira-selected-ticket" class="jira-selected-ticket hidden">
+            <span class="material-symbols-outlined">check_circle</span>
+            <div class="jira-selected-info">
+              <span id="jira-selected-key" class="jira-selected-key"></span>
+              <span id="jira-selected-summary" class="jira-selected-summary"></span>
+            </div>
+            <button id="jira-clear-selection" class="icon-btn" title="Clear selection">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Shared: session notes + tabs summary -->
+        <div class="jira-form-group">
+          <label class="jira-label" for="jira-description">Session notes <span class="optional">(optional)</span></label>
+          <textarea id="jira-description" class="jira-textarea" rows="3" placeholder="What were you investigating? What did you find?"></textarea>
+        </div>
+
+        <div id="jira-tabs-summary" class="jira-tabs-summary"></div>
+
+        <div id="jira-error" class="jira-error hidden"></div>
+        <div id="jira-success" class="jira-success hidden"></div>
+      </div>
+
+      <div id="jira-actions">
+        <button id="jira-cancel" class="btn-secondary">Cancel</button>
+        <button id="jira-submit" class="btn-primary">
+          <span class="material-symbols-outlined">upload</span>
+          <span id="jira-submit-label">Send to Jira</span>
+          <span id="jira-submit-spinner" class="spinner hidden"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================
        SCRIPTS — order matters: settings first (loads settings into
        window.shellshellmateSettings), then connections → tabs → terminal
   ================================================================ -->
@@ -467,6 +572,7 @@ GigEth0/2     unassigned    YES unset  down     down
   <script src="/static/js/chat.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/logs.js"></script>
+  <script src="/static/js/jira.js"></script>
   <script>
     // ----------------------------------------------------------------
     // Paste confirmation modal
