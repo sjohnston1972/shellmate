@@ -19,6 +19,7 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 async def stream_response(
     user_message: str,
     context_block: str,
+    model: str | None = None,
 ) -> AsyncIterator[str]:
     """
     Stream a DeepSeek response token by token.
@@ -37,7 +38,7 @@ async def stream_response(
     }
 
     payload = {
-        "model":      DEEPSEEK_MODEL,
+        "model":      model or DEEPSEEK_MODEL,
         "stream":     True,
         "max_tokens": 2048,
         "messages": [

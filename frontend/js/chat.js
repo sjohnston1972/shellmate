@@ -17,7 +17,8 @@
   // -----------------------------------------------------------------------
   let chatWs          = null;
   let isStreaming     = false;
-  let currentBackend  = 'claude'; // overridden by settings on load
+  let currentBackend  = 'claude';       // provider key, e.g. "claude", "ollama"
+  let currentModel    = 'claude-sonnet-4-6'; // specific model string
   let contextMode     = 'active'; // 'active' | 'all' | '1'..'9'
   let streamingBubble = null;     // the <div> currently being filled
   let _outputWatcher  = null;     // active command output watcher
@@ -43,8 +44,42 @@
     backendSelect    = document.getElementById('ai-backend-select');
     contextIndicator = document.getElementById('chat-context-indicator');
 
-    // Sync currentBackend from the dropdown's initial value (set via HTML selected attr)
-    currentBackend = backendSelect.value || 'claude';
+    // Parse "backend:model" value from the dropdown
+    function _parseSelection(val) {
+      const idx = val.indexOf(':');
+      if (idx === -1) return { backend: val, model: val };
+      return { backend: val.slice(0, idx), model: val.slice(idx + 1) };
+    }
+
+    function _applySelection(val) {
+      const { backend, model } = _parseSelection(val);
+      currentBackend = backend;
+      currentModel   = model;
+    }
+
+    _applySelection(backendSelect.value || 'claude:claude-sonnet-4-6');
+
+    // Dynamically populate local Ollama models
+    fetch('/api/ollama/models').then(r => r.json()).then(models => {
+      const group = document.getElementById('local-models-group');
+      if (!group) return;
+      group.innerHTML = '';
+      if (!models.length) {
+        const opt = document.createElement('option');
+        opt.value = '_none'; opt.disabled = true; opt.textContent = 'None found';
+        group.appendChild(opt);
+        return;
+      }
+      models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = `ollama:${m.name}`;
+        opt.textContent = `${m.name}${m.size ? '  (' + m.size + ')' : ''}`;
+        group.appendChild(opt);
+      });
+    }).catch(() => {
+      const group = document.getElementById('local-models-group');
+      if (group) { group.innerHTML = '<option value="_err" disabled>Ollama unavailable</option>'; }
+    });
 
     // Wire up events
     sendBtn.addEventListener('click', sendMessage);
@@ -59,7 +94,7 @@
     });
 
     backendSelect.addEventListener('change', () => {
-      currentBackend = backendSelect.value;
+      _applySelection(backendSelect.value);
       updateContextIndicator();
     });
 
@@ -166,6 +201,7 @@
         session_id:        sessionId,
         open_session_ids:  openIds,
         backend:           currentBackend,
+        model:             currentModel,
         context_mode:      mode,
       }));
     } else {
@@ -251,6 +287,7 @@
       message,
       session_id:   sid,
       backend:      currentBackend,
+      model:        currentModel,
       context_mode: contextMode,
     }));
   }
@@ -706,6 +743,11 @@
   // Expose for test access and for settings.js to update the backend selector
   window._chatInjectCommand  = injectCommand;
   window._chatSend           = sendMessage;
-  window._chatSetBackend     = (b) => { currentBackend = b; if (backendSelect) backendSelect.value = b; };
+  window._chatSetBackend     = (val) => {
+    if (backendSelect) backendSelect.value = val;
+    const idx = val.indexOf(':');
+    currentBackend = idx === -1 ? val : val.slice(0, idx);
+    currentModel   = idx === -1 ? val : val.slice(idx + 1);
+  };
 
 })();

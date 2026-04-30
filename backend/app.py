@@ -290,6 +290,31 @@ async def post_session_to_jira(request: Request) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# REST — Ollama model list
+# ---------------------------------------------------------------------------
+
+@app.get("/api/ollama/models")
+async def ollama_models() -> list[dict]:
+    """Return the list of models installed in the local Ollama instance."""
+    from backend.config import OLLAMA_HOST
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"{OLLAMA_HOST.rstrip('/')}/api/tags")
+            resp.raise_for_status()
+            data = resp.json()
+            return [
+                {
+                    "name":   m["name"],
+                    "size":   m.get("details", {}).get("parameter_size", ""),
+                    "family": m.get("details", {}).get("family", ""),
+                }
+                for m in data.get("models", [])
+            ]
+    except Exception:
+        return []
+
+
 # REST — Session logs
 # ---------------------------------------------------------------------------
 
@@ -507,6 +532,7 @@ async def chat_websocket(websocket: WebSocket) -> None:
             user_message     = msg.get("message", "").strip()
             session_id       = msg.get("session_id")
             backend          = msg.get("backend", DEFAULT_AI_BACKEND)
+            model            = msg.get("model") or None
             context_mode     = msg.get("context_mode", "active")
             open_session_ids = msg.get("open_session_ids") or None
 
@@ -521,6 +547,7 @@ async def chat_websocket(websocket: WebSocket) -> None:
                     context_mode=context_mode,
                     session_manager=session_manager,
                     open_session_ids=open_session_ids,
+                    model=model,
                 ):
                     await websocket.send_text(
                         json.dumps({"type": "chunk", "data": chunk})

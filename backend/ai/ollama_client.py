@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 async def stream_response(
     user_message: str,
     context_block: str,
+    model: str | None = None,
 ) -> AsyncIterator[str]:
     """
     Stream an Ollama response token by token.
@@ -29,7 +30,7 @@ async def stream_response(
 
     url = f"{OLLAMA_HOST.rstrip('/')}/api/chat"
     payload = {
-        "model": OLLAMA_MODEL,
+        "model": model or OLLAMA_MODEL,
         "stream": True,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},

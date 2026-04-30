@@ -20,6 +20,7 @@ MODEL = "claude-sonnet-4-6"
 async def stream_response(
     user_message: str,
     context_block: str,
+    model: str | None = None,
 ) -> AsyncIterator[str]:
     """
     Stream a Claude API response token by token.
@@ -40,7 +41,7 @@ async def stream_response(
     }
 
     payload = {
-        "model": MODEL,
+        "model": model or MODEL,
         "max_tokens": 2048,
         "system": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": full_user_message}],

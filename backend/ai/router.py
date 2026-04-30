@@ -34,6 +34,7 @@ async def stream_chat(
     context_mode: str,                    # "active" | "all" | "1" | "2" etc
     session_manager: SessionManager,
     open_session_ids: list[str] | None = None,  # only sessions the browser has open
+    model: str | None = None,             # optional model override
 ) -> AsyncIterator[str]:
     """
     Build context from session buffers, then stream an AI response.
@@ -115,7 +116,7 @@ async def stream_chat(
         extra_contexts or None,
     )
 
-    # Route to the correct backend
+    # Route to the correct backend, passing optional model override
     if backend == "claude":
         from backend.ai.claude_client import stream_response
     elif backend == "xai":
@@ -127,5 +128,5 @@ async def stream_chat(
     else:
         from backend.ai.ollama_client import stream_response
 
-    async for chunk in stream_response(message, context_block):
+    async for chunk in stream_response(message, context_block, model=model):
         yield chunk

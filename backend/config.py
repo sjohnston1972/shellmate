@@ -29,7 +29,7 @@ OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 
 # xAI (Grok) — OpenAI-compatible API
 XAI_API_KEY: str  = os.getenv("XAI_API_KEY", "")
-XAI_MODEL: str    = os.getenv("XAI_MODEL", "grok-2-latest")
+XAI_MODEL: str    = os.getenv("XAI_MODEL", "grok-3")
 
 # OpenAI
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")

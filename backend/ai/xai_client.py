@@ -20,6 +20,7 @@ XAI_API_URL = "https://api.x.ai/v1/chat/completions"
 async def stream_response(
     user_message: str,
     context_block: str,
+    model: str | None = None,
 ) -> AsyncIterator[str]:
     """
     Stream a Grok response token by token via xAI's OpenAI-compatible API.
@@ -38,7 +39,7 @@ async def stream_response(
     }
 
     payload = {
-        "model":    XAI_MODEL,
+        "model":    model or XAI_MODEL,
         "stream":   True,
         "max_tokens": 2048,
         "messages": [
