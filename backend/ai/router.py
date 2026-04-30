@@ -118,6 +118,12 @@ async def stream_chat(
     # Route to the correct backend
     if backend == "claude":
         from backend.ai.claude_client import stream_response
+    elif backend == "xai":
+        from backend.ai.xai_client import stream_response
+    elif backend == "openai":
+        from backend.ai.openai_client import stream_response
+    elif backend == "deepseek":
+        from backend.ai.deepseek_client import stream_response
     else:
         from backend.ai.ollama_client import stream_response
 

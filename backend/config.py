@@ -27,7 +27,19 @@ if _ollama_host_raw in ("http://0.0.0.0", "https://0.0.0.0"):
 OLLAMA_HOST: str = _ollama_host_raw
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 
-# Default AI backend ("claude" or "ollama")
+# xAI (Grok) — OpenAI-compatible API
+XAI_API_KEY: str  = os.getenv("XAI_API_KEY", "")
+XAI_MODEL: str    = os.getenv("XAI_MODEL", "grok-2-latest")
+
+# OpenAI
+OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL: str   = os.getenv("OPENAI_MODEL", "gpt-4o")
+
+# DeepSeek
+DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_MODEL: str   = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+
+# Default AI backend ("claude", "ollama", or "xai")
 DEFAULT_AI_BACKEND: str = os.getenv("DEFAULT_AI_BACKEND", "claude")
 
 # Serial / console defaults (Windows COM port)

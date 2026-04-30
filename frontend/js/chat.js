@@ -621,7 +621,7 @@
   // -----------------------------------------------------------------------
   // Claude Sonnet context window (tokens).  Ollama models vary but 32k is a
   // safe conservative estimate for the local models most people run.
-  const CONTEXT_LIMITS = { claude: 200_000, ollama: 32_000 };
+  const CONTEXT_LIMITS = { claude: 200_000, ollama: 32_000, xai: 131_072, openai: 128_000, deepseek: 64_000 };
 
   function _estimateTokens() {
     // Chat history chars (tracked in jira.js via addJiraChatMessage)
