@@ -111,7 +111,7 @@
         <div id="chat-header">
           <div id="chat-header-left">
             <span class="material-symbols-outlined" style="font-size:16px;color:var(--primary)">smart_toy</span>
-            <span id="chat-title">ShellMate Chat</span>
+            <span id="chat-title">CHAT</span>
             <span id="chat-context-indicator" title="Current AI context"></span>
           </div>
           <div id="chat-header-right">
@@ -130,6 +130,9 @@
                 <option value="_loading" disabled>Loading…</option>
               </optgroup>
             </select>
+            <button id="chat-popout" class="icon-btn" title="Pop out chat (drag to move, drag corner to resize)">
+              <span class="material-symbols-outlined" id="chat-popout-icon">open_in_new</span>
+            </button>
             <button id="btn-conclude-session" class="chat-pill-btn" title="Conclude session — log to Jira">
               <span class="material-symbols-outlined">summarize</span>
               Conclude

@@ -293,29 +293,75 @@ a {
   padding: 0 8px 0 10px;
   background: transparent;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
-  border: 1px solid transparent;
+  border: 1px solid var(--outline);
   border-bottom: none;
   cursor: pointer;
   white-space: nowrap;
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 12px;
-  color: rgba(229,226,225,0.4);
-  transition: background 0.12s, color 0.12s;
+  color: rgba(229,226,225,0.55);
+  transition: background 0.12s, color 0.12s, border-color 0.12s, box-shadow 0.12s;
   min-width: 80px;
   max-width: 200px;
   position: relative;
 }
 
+/* Coloured top-accent ribbon — present but subtle on idle tabs */
+.tab::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--secondary);
+  opacity: 0.25;
+  transition: opacity 0.15s, background 0.15s, left 0.15s, right 0.15s;
+}
+
 .tab:hover {
   background: var(--surface-high);
   color: var(--on-surface);
+  border-color: rgba(183,200,225,0.45);   /* secondary, brighter */
+}
+
+.tab:hover::before {
+  opacity: 0.7;
 }
 
 .tab.active {
   background: var(--surface-high);
   color: var(--on-surface);
-  border-color: rgba(70,69,85,0.3);
+  border-color: var(--primary-container);
   border-bottom-color: var(--surface-high);
+  box-shadow: 0 0 0 1px rgba(79,70,229,0.45) inset;
+}
+
+/* Bright primary ribbon spans the full tab width when active */
+.tab.active::before {
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--primary-container);
+  opacity: 1;
+}
+
+/* Disconnected — soft red outline + ribbon */
+.tab.disconnected {
+  border-color: rgba(255,180,171,0.45);
+}
+.tab.disconnected::before {
+  background: var(--error);
+  opacity: 0.6;
+}
+.tab.disconnected.active {
+  border-color: var(--error);
+  box-shadow: 0 0 0 1px rgba(255,180,171,0.5) inset;
+}
+.tab.disconnected.active::before {
+  background: var(--error);
+  opacity: 1;
 }
 
 /* Connection status dot */
@@ -540,6 +586,36 @@ a {
   overflow: hidden;
   flex-shrink: 0;
 }
+
+/* --- Floating / popped-out chat window ----------------------------------- */
+#chat-pane.popped-out {
+  position: fixed;
+  /* top/left/width/height set inline by JS */
+  z-index: 1000;
+  max-width: none;
+  min-width: 320px;
+  min-height: 280px;
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.35);
+  resize: both;          /* native bottom-right resize handle */
+  overflow: hidden;
+}
+
+#chat-pane.popped-out #chat-header {
+  cursor: move;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#chat-pane.popped-out.dragging {
+  opacity: 0.97;
+  cursor: grabbing;
+}
+
+/* Hide the in-layout divider while popped out */
+body.chat-popped #split-divider { display: none; }
+body.chat-popped #chat-pane:not(.popped-out) { display: none; }
 
 /* Chat header */
 #chat-header {

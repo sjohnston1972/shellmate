@@ -134,10 +134,13 @@ ShellMate uses the *Deep Space* design system — dark background, Space Grotesk
 
 ## Security
 
-- The web server binds to `127.0.0.1` only — not accessible from other machines
-- Passwords are never stored (prompted on each connection)
-- API keys live in `.env` only, never in code or profiles
-- Session buffers are in-memory and cleared on disconnect (unless file logging is enabled)
+- **No built-in authentication.** ShellMate is an interactive SSH client, so anyone who reaches the web UI can launch sessions to any host the server can route to. Treat it like an open shell:
+  - Local development (`python run.py`) binds to `127.0.0.1` only — fine for a single user on the same machine.
+  - The Docker / `docker-compose.yml` path binds to `0.0.0.0:8765` so the container is reachable on its network. **Do not expose it directly to the public internet.** Put it behind something that authenticates users — Cloudflare Access, Tailscale, an SSO-aware reverse proxy, etc.
+- **Passwords are never stored.** They're prompted on each connection and held only in memory for the duration of the session.
+- **API keys** live in `.env` only — never in code, never in saved profiles.
+- **Session buffers** are in-memory and cleared on disconnect, unless file logging is explicitly enabled.
+- **Saved profiles** record connection metadata only (host, port, username, type) — never credentials.
 
 ## License
 

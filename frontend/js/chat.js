@@ -107,6 +107,9 @@
     // Set up draggable divider
     initDivider();
 
+    // Pop-out / dock-in chat window
+    initPopout();
+
     // Connect WebSocket
     connectChatWs();
 
@@ -647,6 +650,150 @@
       divider.classList.remove('dragging');
       document.body.style.cursor     = '';
       document.body.style.userSelect = '';
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Pop-out chat window — drag by header, resize from bottom-right corner
+  // -----------------------------------------------------------------------
+
+  const POPOUT_KEY = 'mate:chat-popout';
+
+  function initPopout() {
+    const btn      = document.getElementById('chat-popout');
+    const icon     = document.getElementById('chat-popout-icon');
+    const chatPane = document.getElementById('chat-pane');
+    const header   = document.getElementById('chat-header');
+    if (!btn || !chatPane || !header) return;
+
+    function isPopped() { return chatPane.classList.contains('popped-out'); }
+
+    function setIcon(popped) {
+      icon.textContent = popped ? 'close_fullscreen' : 'open_in_new';
+      btn.title = popped
+        ? 'Dock chat back into the layout'
+        : 'Pop out chat (drag to move, drag corner to resize)';
+    }
+
+    function applyState(state) {
+      // state: { popped: bool, top, left, width, height }
+      if (state && state.popped) {
+        // Default placement: top-right with sensible size
+        const w = Math.max(320, Math.min(window.innerWidth - 40, state.width  || 420));
+        const h = Math.max(280, Math.min(window.innerHeight - 40, state.height || 600));
+        const left = state.left != null
+          ? Math.max(0, Math.min(window.innerWidth  - 80, state.left))
+          : (window.innerWidth - w - 24);
+        const top  = state.top != null
+          ? Math.max(0, Math.min(window.innerHeight - 60, state.top))
+          : 80;
+        chatPane.classList.add('popped-out');
+        chatPane.style.top    = top  + 'px';
+        chatPane.style.left   = left + 'px';
+        chatPane.style.width  = w + 'px';
+        chatPane.style.height = h + 'px';
+        document.body.classList.add('chat-popped');
+      } else {
+        chatPane.classList.remove('popped-out');
+        chatPane.style.top = chatPane.style.left = '';
+        chatPane.style.height = '';
+        chatPane.style.width = ''; // restored to CSS default
+        document.body.classList.remove('chat-popped');
+      }
+      setIcon(isPopped());
+      // Refit active terminal because layout shifted
+      if (typeof window.getActiveTab === 'function') {
+        const tab = window.getActiveTab();
+        if (tab && tab.fitAddon) {
+          requestAnimationFrame(() => { try { tab.fitAddon.fit(); } catch (_) {} });
+        }
+      }
+    }
+
+    function saveState() {
+      const r = chatPane.getBoundingClientRect();
+      try {
+        localStorage.setItem(POPOUT_KEY, JSON.stringify({
+          popped: isPopped(),
+          top:    r.top,
+          left:   r.left,
+          width:  r.width,
+          height: r.height,
+        }));
+      } catch (_) {}
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(POPOUT_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (_) { return null; }
+    }
+
+    // Restore last state on page load
+    const saved = loadState();
+    if (saved && saved.popped) applyState(saved);
+    setIcon(isPopped());
+
+    // Toggle button
+    btn.addEventListener('click', () => {
+      if (isPopped()) {
+        applyState({ popped: false });
+      } else {
+        const prev = loadState() || {};
+        applyState({ popped: true, ...prev, popped: true });
+      }
+      saveState();
+    });
+
+    // --- Drag by header --------------------------------------------------
+    let dragging = false, startX = 0, startY = 0, startTop = 0, startLeft = 0;
+
+    header.addEventListener('mousedown', (e) => {
+      if (!isPopped()) return;
+      // Don't start a drag when the user clicks a control inside the header
+      if (e.target.closest('button, select, input, textarea, a')) return;
+      dragging  = true;
+      startX    = e.clientX;
+      startY    = e.clientY;
+      const r   = chatPane.getBoundingClientRect();
+      startTop  = r.top;
+      startLeft = r.left;
+      chatPane.classList.add('dragging');
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const r   = chatPane.getBoundingClientRect();
+      const newLeft = Math.max(0, Math.min(window.innerWidth  - r.width  - 4, startLeft + (e.clientX - startX)));
+      const newTop  = Math.max(0, Math.min(window.innerHeight - r.height - 4, startTop  + (e.clientY - startY)));
+      chatPane.style.left = newLeft + 'px';
+      chatPane.style.top  = newTop  + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      chatPane.classList.remove('dragging');
+      saveState();
+    });
+
+    // --- Persist resize -------------------------------------------------
+    // CSS `resize: both` does the resizing; observe the size to persist it.
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(() => { if (isPopped()) saveState(); }).observe(chatPane);
+    }
+
+    // Keep the window inside the viewport when the browser is resized
+    window.addEventListener('resize', () => {
+      if (!isPopped()) return;
+      const r = chatPane.getBoundingClientRect();
+      const left = Math.max(0, Math.min(window.innerWidth  - r.width  - 4, r.left));
+      const top  = Math.max(0, Math.min(window.innerHeight - r.height - 4, r.top));
+      chatPane.style.left = left + 'px';
+      chatPane.style.top  = top  + 'px';
+      saveState();
     });
   }
 

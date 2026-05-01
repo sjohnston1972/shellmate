@@ -115,7 +115,7 @@
           <span class="welcome-profile-name">${p.name}</span>
           <span class="welcome-profile-host">${p.hostname}</span>
         `;
-        card.addEventListener('click', () => showConnectionDialog(p));
+        card.addEventListener('click', () => openProfile(p));
 
         const del = document.createElement('button');
         del.className = 'welcome-profile-delete';
@@ -158,6 +158,38 @@
     });
   }
 
+  /**
+   * Click handler for a saved-device tile.
+   *
+   * If a tab is already open for this profile (matched on hostname+port+username),
+   * switch to that tab. Otherwise open the connection dialog pre-filled.
+   */
+  async function openProfile(p) {
+    try {
+      const openIds = (typeof window.getOpenSessionIds === 'function')
+        ? window.getOpenSessionIds() : [];
+      if (openIds.length) {
+        const r = await fetch('/api/sessions');
+        if (r.ok) {
+          const sessions = await r.json();
+          const openSet  = new Set(openIds);
+          const match = sessions.find(s =>
+            openSet.has(s.session_id) &&
+            s.hostname === p.hostname &&
+            (s.port || 22) === (p.port || 22) &&
+            s.username === p.username
+          );
+          if (match && typeof window.switchToTabBySessionId === 'function') {
+            window.switchToTabBySessionId(match.session_id);
+            return;
+          }
+        }
+      }
+    } catch (_) { /* fall through to dialog */ }
+
+    showConnectionDialog(p);
+  }
+
   function fillFromProfile(p) {
     document.getElementById('field-label').value    = p.name || '';
     document.getElementById('field-hostname').value = p.hostname || '';
@@ -188,6 +220,9 @@
         body:    JSON.stringify(payload),
       });
       await loadProfiles();
+      if (typeof window.renderWelcomeProfiles === 'function') {
+        window.renderWelcomeProfiles();
+      }
     } catch (e) {
       showError('Could not save profile.');
     }
@@ -262,6 +297,12 @@
               connection_type: payload.connection_type,
             }),
           });
+          // Refresh both the in-dialog list and the welcome-screen grid so
+          // the new profile is visible without a page reload.
+          await loadProfiles();
+          if (typeof window.renderWelcomeProfiles === 'function') {
+            window.renderWelcomeProfiles();
+          }
         }
       } catch (_) { /* non-fatal */ }
 
