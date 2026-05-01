@@ -198,6 +198,9 @@
     summaryInput.value     = label ? `${label} — session ${today}` : `ShellMate session ${today}`;
     descriptionInput.value = '';
 
+    // Auto-populate session notes with an AI-generated summary
+    _fetchAiSummary();
+
     // Reset to new-ticket mode
     setMode('new');
     clearSelection();
@@ -300,6 +303,62 @@
     } else {
       submitLabel.textContent = 'Send to Jira';
       submitBtn.disabled = false;
+    }
+  }
+
+  // Cancel any in-flight summary request when the modal is reopened
+  let _summaryAbort = null;
+
+  async function _fetchAiSummary() {
+    // Pull whatever the chat panel has currently selected as the backend
+    let backend = 'claude';
+    let model   = null;
+    const sel   = document.getElementById('ai-backend-select');
+    if (sel && sel.value) {
+      const idx = sel.value.indexOf(':');
+      backend = idx === -1 ? sel.value : sel.value.slice(0, idx);
+      model   = idx === -1 ? null      : sel.value.slice(idx + 1);
+    }
+
+    const openIds = typeof window.getOpenSessionIds === 'function'
+      ? window.getOpenSessionIds() : [];
+
+    // No sessions and no chat → nothing to summarise
+    if (!openIds.length && !chatHistory.length) {
+      descriptionInput.placeholder = 'What were you investigating? What did you find?';
+      return;
+    }
+
+    if (_summaryAbort) _summaryAbort.abort();
+    _summaryAbort = new AbortController();
+
+    descriptionInput.value = '';
+    descriptionInput.placeholder = 'Generating session summary…';
+    descriptionInput.disabled = true;
+
+    try {
+      const r = await fetch('/api/ai/session-summary', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          open_session_ids: openIds,
+          chat_messages:    chatHistory,
+          backend, model,
+        }),
+        signal: _summaryAbort.signal,
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      // Only fill if the user hasn't started typing in the meantime
+      if (!descriptionInput.value.trim() && data.summary) {
+        descriptionInput.value = data.summary;
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        descriptionInput.placeholder = 'Could not generate summary — type your own notes.';
+      }
+    } finally {
+      descriptionInput.disabled = false;
     }
   }
 

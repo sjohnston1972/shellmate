@@ -233,6 +233,30 @@ async def jira_issue_types() -> list[str]:
         raise HTTPException(502, f"Jira error: {e}")
 
 
+@app.post("/api/ai/session-summary")
+async def ai_session_summary(request: Request) -> dict:
+    """Return an AI-generated summary of the open terminal sessions and chat history."""
+    body             = await request.json()
+    open_session_ids = body.get("open_session_ids") or []
+    chat_messages    = body.get("chat_messages") or []
+    backend          = (body.get("backend") or DEFAULT_AI_BACKEND).strip()
+    model            = body.get("model") or None
+
+    from backend.ai.summarize import summarize_session
+    try:
+        summary = await summarize_session(
+            open_session_ids=open_session_ids,
+            chat_messages=chat_messages,
+            backend=backend,
+            session_manager=session_manager,
+            model=model,
+        )
+    except Exception as e:
+        logger.exception("session summary failed")
+        raise HTTPException(502, f"Summary failed: {e}")
+    return {"summary": summary}
+
+
 @app.post("/api/jira/session")
 async def post_session_to_jira(request: Request) -> dict:
     """Build a rich ADF document from session buffers + chat history and post to Jira."""

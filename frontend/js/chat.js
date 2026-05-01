@@ -119,7 +119,8 @@
   // -----------------------------------------------------------------------
 
   function connectChatWs() {
-    const url = `ws://${window.location.host}/ws/chat`;
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${proto}//${window.location.host}/ws/chat`;
     chatWs = new WebSocket(url);
 
     chatWs.addEventListener('message', handleWsMessage);

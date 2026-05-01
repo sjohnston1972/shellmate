@@ -56,6 +56,25 @@ python run.py
 
 ShellMate starts a local web server and opens your browser to `http://localhost:8765` automatically.
 
+### Run with Docker
+
+A `Dockerfile` and `docker-compose.yml` are included. The compose file attaches the
+container to an external Docker network called `net_core`, so it pairs naturally
+with a Cloudflare tunnel or any other reverse-proxy container on the same network.
+
+```bash
+cp .env.example .env       # add your keys
+docker compose up -d --build
+```
+
+The container binds uvicorn to `0.0.0.0:8765`, mounts `./profiles` and `./logs`
+for persistence, and exposes `8765:8765` for direct local access. To reach an
+Ollama instance on the host, set `OLLAMA_HOST=http://host.docker.internal:11434`
+(or the LAN IP of the box running Ollama) in `.env`.
+
+If you front the container with a TLS reverse proxy, the WebSocket clients pick
+`wss://` automatically — no extra configuration needed.
+
 ## Usage
 
 | Action | How |

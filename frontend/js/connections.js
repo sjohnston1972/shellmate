@@ -240,6 +240,31 @@
         console.error('createTab() not found — is tabs.js loaded?');
       }
 
+      // Auto-save profile (no password) so it persists across refreshes.
+      // Skip if a profile with the same hostname+username+port already exists.
+      try {
+        const r = await fetch('/api/profiles');
+        const existing = r.ok ? await r.json() : [];
+        const dup = existing.some(p =>
+          p.hostname === payload.hostname &&
+          p.username === payload.username &&
+          (p.port || 22) === (payload.port || 22)
+        );
+        if (!dup) {
+          await fetch('/api/profiles', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              name:            payload.display_label || payload.hostname,
+              hostname:        payload.hostname,
+              port:            payload.port,
+              username:        payload.username,
+              connection_type: payload.connection_type,
+            }),
+          });
+        }
+      } catch (_) { /* non-fatal */ }
+
     } catch (err) {
       showError(err.message || 'Could not connect. Check host and credentials.');
       setLoading(false);

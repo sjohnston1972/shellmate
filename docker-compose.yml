@@ -1,0 +1,29 @@
+services:
+  shellmate:
+    container_name: shellmate
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override host so uvicorn binds inside the container (the .env default is 127.0.0.1)
+      SHELLMATE_HOST: 0.0.0.0
+      SHELLMATE_PORT: 8765
+    extra_hosts:
+      # Lets the container reach Ollama (or any other service) running on the Windows host
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./profiles:/app/profiles
+      - ./logs:/app/logs
+    ports:
+      # Optional: expose for direct local access at http://localhost:8765
+      # The Cloudflare tunnel reaches the container via the net_core network and does not need this.
+      - "8765:8765"
+    networks:
+      - net_core
+
+networks:
+  net_core:
+    external: true

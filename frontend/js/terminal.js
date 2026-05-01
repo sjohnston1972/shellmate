@@ -120,7 +120,8 @@
     // ------------------------------------------------------------------
     // 4. Open WebSocket to the backend
     // ------------------------------------------------------------------
-    const wsUrl    = `ws://${window.location.host}/ws/terminal/${sessionId}`;
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl    = `${wsProto}//${window.location.host}/ws/terminal/${sessionId}`;
     const websocket = new WebSocket(wsUrl);
 
     // ------------------------------------------------------------------
