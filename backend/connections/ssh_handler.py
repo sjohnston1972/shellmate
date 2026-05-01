@@ -74,6 +74,11 @@ class SSHHandler:
             look_for_keys=False,
         )
 
+        # Authentication is complete — paramiko's Transport no longer needs
+        # the password, so drop our copy. The session still works because
+        # the open SSH channel is independent of the credentials.
+        self.password = ""
+
         # Open an interactive PTY shell — this is what makes tab completion,
         # paging (--More--), and coloured output work correctly.
         self._channel = self._client.invoke_shell(
