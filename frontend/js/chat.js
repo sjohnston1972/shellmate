@@ -200,6 +200,7 @@
 
     if (chatWs && chatWs.readyState === WebSocket.OPEN) {
       const openIds = typeof window.getOpenSessionIds === 'function' ? window.getOpenSessionIds() : [];
+      const aiMode = typeof window.getShellmateMode === 'function' ? window.getShellmateMode() : 'tshoot';
       chatWs.send(JSON.stringify({
         message,
         session_id:        sessionId,
@@ -207,6 +208,7 @@
         backend:           currentBackend,
         model:             currentModel,
         context_mode:      mode,
+        mode:              aiMode,
       }));
     } else {
       finishStreaming();
@@ -287,12 +289,14 @@
     isStreaming = true;
     sendBtn.disabled = true;
 
+    const aiMode = typeof window.getShellmateMode === 'function' ? window.getShellmateMode() : 'tshoot';
     chatWs.send(JSON.stringify({
       message,
       session_id:   sid,
       backend:      currentBackend,
       model:        currentModel,
       context_mode: contextMode,
+      mode:         aiMode,
     }));
   }
 

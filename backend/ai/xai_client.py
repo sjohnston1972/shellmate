@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator
 import httpx
 
 from backend.config import XAI_API_KEY, XAI_MODEL
+from backend.settings_store import get_effective
 from backend.ai.prompts import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -21,20 +22,22 @@ async def stream_response(
     user_message: str,
     context_block: str,
     model: str | None = None,
+    system_prompt: str | None = None,
 ) -> AsyncIterator[str]:
     """
     Stream a Grok response token by token via xAI's OpenAI-compatible API.
     Yields text chunks as they arrive.
     """
-    if not XAI_API_KEY:
-        raise ValueError("XAI_API_KEY is not set. Add it to your .env file.")
+    api_key = get_effective("xai_api_key", XAI_API_KEY)
+    if not api_key:
+        raise ValueError("xAI API key is not set. Configure it in Settings or .env.")
 
     full_user_message = (
         f"{context_block}\n\n=== ENGINEER'S QUESTION ===\n{user_message}"
     )
 
     headers = {
-        "Authorization": f"Bearer {XAI_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type":  "application/json",
     }
 
@@ -43,7 +46,7 @@ async def stream_response(
         "stream":   True,
         "max_tokens": 2048,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt or SYSTEM_PROMPT},
             {"role": "user",   "content": full_user_message},
         ],
     }

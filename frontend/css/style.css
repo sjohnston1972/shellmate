@@ -2515,3 +2515,132 @@ body.chat-popped #chat-pane:not(.popped-out) { display: none; }
   background: rgba(235,235,238,0.97);
   box-shadow: 0 24px 64px rgba(0,0,0,0.2);
 }
+
+/* --------------------------------------------------------------------------
+   Tab-bar Learn / Troubleshoot mode toggle.
+   Single pill button that flips mode on click; sized to match #btn-new-tab.
+   -------------------------------------------------------------------------- */
+.mode-toggle-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--on-surface-muted);
+  flex-shrink: 0;
+  margin-left: 4px;
+  line-height: 1;
+}
+
+.mode-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  min-width: 76px;
+  padding: 0 14px;
+  background: var(--primary-container);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-full);
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.15s, transform 0.1s, background 0.15s;
+}
+
+.mode-toggle-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.mode-toggle-btn:active {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* Slightly distinct fill for Learn so the active mode is visible at a glance */
+.mode-toggle-btn[data-mode="learn"] {
+  background: var(--secondary);
+  color: #1C1B22;
+}
+
+[data-theme="light"] .mode-toggle-label                 { color: rgba(28,27,34,0.5); }
+[data-theme="light"] .mode-toggle-btn                   { color: #fff; }
+[data-theme="light"] .mode-toggle-btn[data-mode="learn"]{ color: #1C1B22; }
+
+/* --------------------------------------------------------------------------
+   Settings — AI provider keys + Chroma section helpers
+   -------------------------------------------------------------------------- */
+.settings-section-hint {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--on-surface-dim);
+  margin: -4px 0 12px;
+  line-height: 1.4;
+}
+
+.settings-section-hint code {
+  background: var(--surface-high);
+  border: 1px solid var(--outline);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--on-surface);
+}
+
+.setting-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.setting-input-full {
+  width: 100%;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.setting-env-note {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--on-surface-muted);
+  font-style: italic;
+}
+
+.setting-env-note.has-env {
+  color: var(--secondary);
+  font-style: normal;
+}
+
+.setting-chroma-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--on-surface-dim);
+}
+
+.chroma-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.chroma-dot-unknown { background: var(--on-surface-muted); }
+.chroma-dot-ok      { background: #4ADE80; box-shadow: 0 0 6px rgba(74,222,128,0.5); }
+.chroma-dot-fail    { background: var(--error);  box-shadow: 0 0 6px rgba(255,180,171,0.4); }
+
+.chroma-test-btn {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 4px 10px;
+}

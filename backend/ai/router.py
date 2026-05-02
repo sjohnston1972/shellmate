@@ -1,13 +1,16 @@
 """
-router.py — Routes AI chat requests to the correct backend (Claude or Ollama).
-Builds context from session buffers and streams the response.
+router.py — Routes AI chat requests to the correct backend (Claude / xAI / OpenAI / DeepSeek / Ollama).
+Builds context from session buffers, optionally retrieves design-guideline snippets
+from a configured Chroma vector DB, and streams the response.
 """
 import logging
 import re
 from collections.abc import AsyncIterator
 
-from backend.ai.prompts import build_context_prompt
+from backend.ai.prompts import build_context_prompt, get_system_prompt
+from backend.ai import chroma_client
 from backend.connections.manager import SessionManager
+from backend.settings_store import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,7 @@ async def stream_chat(
     session_manager: SessionManager,
     open_session_ids: list[str] | None = None,  # only sessions the browser has open
     model: str | None = None,             # optional model override
+    mode: str | None = None,              # "learn" | "tshoot"
 ) -> AsyncIterator[str]:
     """
     Build context from session buffers, then stream an AI response.
@@ -108,15 +112,27 @@ async def stream_chat(
                         "buffer": sess["buffer"].get_text(100),
                     })
 
+    # Optional Chroma-backed design-guideline snippets. Only queried when a URL
+    # is configured (settings or env). Failures are swallowed inside the client.
+    design_context = ""
+    if chroma_client.is_configured():
+        snippets = await chroma_client.query_design_guidelines(message)
+        design_context = chroma_client.format_for_prompt(snippets)
+
     context_block = build_context_prompt(
         sessions_summary,
         active_buffer,
         active_label,
         command_history,
         extra_contexts or None,
+        design_context=design_context,
     )
 
-    # Route to the correct backend, passing optional model override
+    # Pick persona from explicit mode arg, falling back to stored preference
+    effective_mode = (mode or get_settings().get("ai", {}).get("mode") or "tshoot")
+    system_prompt = get_system_prompt(effective_mode)
+
+    # Route to the correct backend, passing optional model override + system prompt
     if backend == "claude":
         from backend.ai.claude_client import stream_response
     elif backend == "xai":
@@ -128,5 +144,7 @@ async def stream_chat(
     else:
         from backend.ai.ollama_client import stream_response
 
-    async for chunk in stream_response(message, context_block, model=model):
+    async for chunk in stream_response(
+        message, context_block, model=model, system_prompt=system_prompt,
+    ):
         yield chunk

@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 import httpx
 
 from backend.config import ANTHROPIC_API_KEY
+from backend.settings_store import get_effective
 from backend.ai.prompts import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -21,21 +22,23 @@ async def stream_response(
     user_message: str,
     context_block: str,
     model: str | None = None,
+    system_prompt: str | None = None,
 ) -> AsyncIterator[str]:
     """
     Stream a Claude API response token by token.
     Yields text chunks as they arrive.
     Raises on API or auth errors.
     """
-    if not ANTHROPIC_API_KEY:
-        raise ValueError("ANTHROPIC_API_KEY is not set. Add it to your .env file.")
+    api_key = get_effective("anthropic_api_key", ANTHROPIC_API_KEY)
+    if not api_key:
+        raise ValueError("Anthropic API key is not set. Configure it in Settings or .env.")
 
     full_user_message = (
         f"{context_block}\n\n=== ENGINEER'S QUESTION ===\n{user_message}"
     )
 
     headers = {
-        "x-api-key": ANTHROPIC_API_KEY,
+        "x-api-key": api_key,
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
     }
@@ -43,7 +46,7 @@ async def stream_response(
     payload = {
         "model": model or MODEL,
         "max_tokens": 2048,
-        "system": SYSTEM_PROMPT,
+        "system": system_prompt or SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": full_user_message}],
         "stream": True,
     }

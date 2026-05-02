@@ -63,6 +63,13 @@
     <header id="tab-bar">
       <button id="tab-bar-brand" title="Home / Quick connect">ShellMate</button>
       <div id="tab-list"></div>
+
+      <!-- Learn / Troubleshoot mode toggle — click to switch -->
+      <span class="mode-toggle-label">MODE</span>
+      <button id="mode-toggle-btn" class="mode-toggle-btn" data-mode="tshoot" aria-label="Toggle ShellMate mode" title="Click to switch mode">
+        <span id="mode-toggle-text">Tshoot</span>
+      </button>
+
       <button id="btn-new-tab" title="New connection (Ctrl+T)">
         <span class="material-symbols-outlined">add</span>
         New
@@ -80,7 +87,6 @@
         <div id="welcome-screen">
           <div id="welcome-content">
             <h1><img src="/static/Untitled-removebg-preview.png" alt="" id="welcome-logo" />ShellMate</h1>
-            
 
             <!-- Saved session quick-launch grid -->
             <div id="welcome-profiles-grid"></div>
@@ -408,6 +414,56 @@ GigEth0/2     unassigned    YES unset  down     down
           </div>
         </section>
 
+        <!-- AI Providers -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">AI Providers</h3>
+          <p class="settings-section-hint">API keys and endpoints. Anything saved here overrides the matching <code>.env</code> variable. Leaving a field empty falls back to <code>.env</code>.</p>
+
+          <div class="setting-row setting-row-stack">
+            <label class="setting-label" for="setting-anthropic-key">Anthropic API key</label>
+            <input type="password" id="setting-anthropic-key" class="setting-input setting-input-full" autocomplete="off" />
+          </div>
+          <div class="setting-row setting-row-stack">
+            <label class="setting-label" for="setting-openai-key">OpenAI API key</label>
+            <input type="password" id="setting-openai-key" class="setting-input setting-input-full" autocomplete="off" />
+          </div>
+          <div class="setting-row setting-row-stack">
+            <label class="setting-label" for="setting-xai-key">xAI (Grok) API key</label>
+            <input type="password" id="setting-xai-key" class="setting-input setting-input-full" autocomplete="off" />
+          </div>
+          <div class="setting-row setting-row-stack">
+            <label class="setting-label" for="setting-deepseek-key">DeepSeek API key</label>
+            <input type="password" id="setting-deepseek-key" class="setting-input setting-input-full" autocomplete="off" />
+          </div>
+          <div class="setting-row setting-row-stack">
+            <label class="setting-label" for="setting-ollama-host">Ollama host URL</label>
+            <input type="text" id="setting-ollama-host" class="setting-input setting-input-full" autocomplete="off" placeholder="http://localhost:11434" />
+          </div>
+        </section>
+
+        <!-- Knowledge base (Chroma) -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Knowledge Base (Chroma DB)</h3>
+          <p class="settings-section-hint">Optional. When set, ShellMate queries this Chroma collection on every chat for design-guideline snippets and injects matches into the AI prompt. Leave blank to disable.</p>
+
+          <div class="setting-row setting-row-stack">
+            <label class="setting-label" for="setting-chroma-url">Chroma URL</label>
+            <input type="text" id="setting-chroma-url" class="setting-input setting-input-full" autocomplete="off" placeholder="http://localhost:8000" />
+          </div>
+          <div class="setting-row setting-row-stack">
+            <label class="setting-label" for="setting-chroma-collection">Collection name</label>
+            <input type="text" id="setting-chroma-collection" class="setting-input setting-input-full" autocomplete="off" placeholder="design_guidelines" />
+          </div>
+          <div class="setting-row">
+            <label class="setting-label">Status</label>
+            <div class="setting-chroma-status">
+              <span id="setting-chroma-status-dot" class="chroma-dot chroma-dot-unknown"></span>
+              <span id="setting-chroma-status-text">Not tested</span>
+              <button type="button" id="setting-chroma-test" class="btn-secondary chroma-test-btn">Test connection</button>
+            </div>
+          </div>
+        </section>
+
         <!-- Logging -->
         <section class="settings-section">
           <h3 class="settings-section-title">Session Logging</h3>
@@ -585,8 +641,9 @@ GigEth0/2     unassigned    YES unset  down     down
   <script src="/static/js/connections.js"></script>
   <script src="/static/js/tabs.js"></script>
   <script src="/static/js/terminal.js"></script>
-  <script src="/static/js/chat.js"></script>
-  <script src="/static/js/settings.js"></script>
+  <script src="/static/js/mode.js?v=3"></script>
+  <script src="/static/js/chat.js?v=2"></script>
+  <script src="/static/js/settings.js?v=2"></script>
   <script src="/static/js/logs.js"></script>
   <script src="/static/js/jira.js"></script>
   <script>

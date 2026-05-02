@@ -31,8 +31,9 @@ from pydantic import BaseModel
 
 from backend.connections.manager import SessionManager
 from backend.profiles import get_profiles, save_profile, delete_profile
-from backend.settings_store import get_settings, update_settings
+from backend.settings_store import get_settings, get_settings_for_ui, update_settings
 from backend.ai.router import stream_chat
+from backend.ai import chroma_client
 from backend.config import DEFAULT_AI_BACKEND, JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY
 
 logger = logging.getLogger(__name__)
@@ -187,14 +188,24 @@ async def remove_profile(profile_id: str) -> dict:
 
 @app.get("/api/settings")
 async def get_app_settings() -> dict:
-    """Return current application settings."""
-    return get_settings()
+    """Return current application settings (secrets masked, env flags included)."""
+    return get_settings_for_ui()
 
 
 @app.post("/api/settings")
 async def save_app_settings(request: UpdateSettingsRequest) -> dict:
     """Persist updated settings and return the merged result."""
     return update_settings(request.settings)
+
+
+# ---------------------------------------------------------------------------
+# REST — Chroma DB health check (used by the settings panel "Test" button)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/chroma/health")
+async def chroma_health() -> dict:
+    """Return whether the configured Chroma DB is reachable."""
+    return await chroma_client.health_check()
 
 
 # ---------------------------------------------------------------------------
@@ -559,6 +570,7 @@ async def chat_websocket(websocket: WebSocket) -> None:
             model            = msg.get("model") or None
             context_mode     = msg.get("context_mode", "active")
             open_session_ids = msg.get("open_session_ids") or None
+            mode             = msg.get("mode") or None  # "learn" | "tshoot"
 
             if not user_message:
                 continue
@@ -572,6 +584,7 @@ async def chat_websocket(websocket: WebSocket) -> None:
                     session_manager=session_manager,
                     open_session_ids=open_session_ids,
                     model=model,
+                    mode=mode,
                 ):
                     await websocket.send_text(
                         json.dumps({"type": "chunk", "data": chunk})

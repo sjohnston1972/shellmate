@@ -51,3 +51,8 @@ JIRA_URL: str          = os.getenv("JIRA_URL", "")
 JIRA_USER_EMAIL: str   = os.getenv("JIRA_USER_EMAIL", "")
 JIRA_API_TOKEN: str    = os.getenv("JIRA_API_TOKEN", "")
 JIRA_PROJECT_KEY: str  = os.getenv("JIRA_PROJECT_KEY", "")
+
+# Chroma vector DB (optional). When set, ShellMate queries this collection for
+# design-guideline context to inject into AI prompts. Empty = disabled.
+CHROMA_URL: str        = os.getenv("CHROMA_URL", "")
+CHROMA_COLLECTION: str = os.getenv("CHROMA_COLLECTION", "design_guidelines")

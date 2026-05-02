@@ -215,9 +215,38 @@
     });
     document.getElementById('setting-font-size').addEventListener('input', _updatePreview);
 
+    // Wire Chroma "Test connection" button
+    const testBtn = document.getElementById('setting-chroma-test');
+    if (testBtn) testBtn.addEventListener('click', testChromaConnection);
+
     // Load settings on startup so terminals start with correct config
     loadSettings();
   });
+
+  async function testChromaConnection() {
+    const dot  = document.getElementById('setting-chroma-status-dot');
+    const text = document.getElementById('setting-chroma-status-text');
+    if (!dot || !text) return;
+
+    // Save current form state first so the test uses the latest URL
+    text.textContent = 'Saving and testing…';
+    dot.className = 'chroma-dot chroma-dot-unknown';
+    try {
+      await saveSettings({ keepOpen: true, silent: true });
+      const res = await fetch('/api/chroma/health');
+      const data = await res.json();
+      if (data.ok) {
+        dot.className = 'chroma-dot chroma-dot-ok';
+        text.textContent = `Connected (${data.url})`;
+      } else {
+        dot.className = 'chroma-dot chroma-dot-fail';
+        text.textContent = data.message || 'Failed';
+      }
+    } catch (e) {
+      dot.className = 'chroma-dot chroma-dot-fail';
+      text.textContent = 'Test failed: ' + e;
+    }
+  }
 
   function _applyUiFontSize(size) {
     const px = (parseInt(size, 10) || 14) + 'px';
@@ -248,6 +277,9 @@
     const t = s.terminal   || {};
     const l = s.logging    || {};
     const a = s.appearance || {};
+    const p = s.providers  || {};
+    const env = s.env_preconfigured || {};
+    const hasVal = s.providers_has_value || {};
 
     _val('setting-font-family',      t.font_family      || 'JetBrains Mono, monospace');
     _val('setting-font-size',        t.font_size        || 14);
@@ -262,6 +294,17 @@
     _val('setting-color-scheme',     a.color_scheme  || 'deep_space');
     _val('setting-ui-font-size',     a.ui_font_size  || 14);
 
+    // Provider fields. The backend masks secrets — we show the masked value
+    // so the user can tell something is saved, and provide a hint placeholder
+    // when the env var is the active source.
+    _populateProviderField('setting-anthropic-key', p.anthropic_api_key, hasVal.anthropic_api_key, env.anthropic_api_key);
+    _populateProviderField('setting-openai-key',    p.openai_api_key,    hasVal.openai_api_key,    env.openai_api_key);
+    _populateProviderField('setting-xai-key',       p.xai_api_key,       hasVal.xai_api_key,       env.xai_api_key);
+    _populateProviderField('setting-deepseek-key',  p.deepseek_api_key,  hasVal.deepseek_api_key,  env.deepseek_api_key);
+    _populateProviderField('setting-ollama-host',   p.ollama_host,       hasVal.ollama_host,       env.ollama_host);
+    _populateProviderField('setting-chroma-url',        p.chroma_url,        hasVal.chroma_url,        env.chroma_url);
+    _populateProviderField('setting-chroma-collection', p.chroma_collection, hasVal.chroma_collection, env.chroma_collection);
+
     // Populate color overrides — show scheme defaults if no override saved
     const schemeName = a.color_scheme || 'deep_space';
     const schemeTheme = (COLOR_SCHEMES[schemeName] || COLOR_SCHEMES.deep_space).theme;
@@ -271,7 +314,30 @@
     _updatePreview();
   }
 
-  async function saveSettings() {
+  /**
+   * Populate a provider-key field. If the user has explicitly set a value in
+   * settings, show it (masked for secrets, plain for URLs). Otherwise:
+   *   - if the matching env var is set, show "Already preconfigured by env variable" placeholder
+   *   - else show the field's normal placeholder (left as-is in HTML)
+   */
+  function _populateProviderField(elId, value, hasUserValue, envPreconfigured) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    if (hasUserValue) {
+      el.value = value || '';
+      el.placeholder = '';
+    } else {
+      el.value = '';
+      if (envPreconfigured) {
+        el.placeholder = 'Already preconfigured by env variable';
+      }
+    }
+    // Stash the original masked value so we can detect "no change" on save
+    el.dataset.maskedOriginal = hasUserValue ? (value || '') : '';
+  }
+
+  async function saveSettings(opts) {
+    opts = opts || {};
     const schemeName = _gval('setting-color-scheme');
     const schemeTheme = (COLOR_SCHEMES[schemeName] || COLOR_SCHEMES.deep_space).theme;
     const fgHex = _gval('setting-fg-hex').trim();
@@ -299,6 +365,7 @@
         foreground_override: (_isValidHex(fgHex) && fgHex.toLowerCase() !== schemeTheme.foreground.toLowerCase()) ? fgHex : null,
         background_override: (_isValidHex(bgHex) && bgHex.toLowerCase() !== schemeTheme.background.toLowerCase()) ? bgHex : null,
       },
+      providers: _collectProviders(),
     };
 
     try {
@@ -312,10 +379,46 @@
       _applyUiFontSize((currentSettings.appearance || {}).ui_font_size || 14);
       // Notify terminal.js to apply new settings
       window.dispatchEvent(new CustomEvent('shellmate:settings-changed', { detail: currentSettings }));
-      closeSettings();
+      // Refresh masked-original markers so subsequent edits are detected correctly
+      populateForm(currentSettings);
+      if (!opts.keepOpen) closeSettings();
     } catch (e) {
       console.error('Failed to save settings:', e);
     }
+  }
+
+  /**
+   * Build the providers payload from the form. For each field:
+   *   - if the user typed nothing → omit (backend keeps existing or falls back to env)
+   *   - if the user typed the masked placeholder → omit (no real change)
+   *   - otherwise → send the new value
+   */
+  function _collectProviders() {
+    const fields = [
+      { id: 'setting-anthropic-key',      key: 'anthropic_api_key' },
+      { id: 'setting-openai-key',         key: 'openai_api_key' },
+      { id: 'setting-xai-key',            key: 'xai_api_key' },
+      { id: 'setting-deepseek-key',       key: 'deepseek_api_key' },
+      { id: 'setting-ollama-host',        key: 'ollama_host' },
+      { id: 'setting-chroma-url',         key: 'chroma_url' },
+      { id: 'setting-chroma-collection',  key: 'chroma_collection' },
+    ];
+    const out = {};
+    fields.forEach(({ id, key }) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const v = (el.value || '').trim();
+      const original = (el.dataset.maskedOriginal || '').trim();
+      // Empty input — only send (as "") if there *was* a stored value being cleared
+      if (!v) {
+        if (original) out[key] = ''; // explicit clear
+        return;
+      }
+      // Identical to masked-original placeholder → no change, omit
+      if (v === original) return;
+      out[key] = v;
+    });
+    return out;
   }
 
   function _val(id, v)     { const el = document.getElementById(id); if (el) el.value = v; }
