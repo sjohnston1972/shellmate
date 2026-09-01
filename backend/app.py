@@ -86,14 +86,24 @@ async def serve_index() -> FileResponse:
 
 
 class CreateSessionRequest(BaseModel):
-    """Body for POST /api/sessions."""
+    """
+    Body for POST /api/sessions.
 
-    hostname: str
+    hostname/port/username/password are used for connection_type="ssh";
+    serial_port/baud_rate are used for connection_type="serial". All are
+    optional (blank/0) so either connection type can be requested without
+    supplying the other type's fields — SessionManager applies config
+    defaults for serial when serial_port/baud_rate are left unset.
+    """
+
+    hostname: str = ""
     port: int = 22
-    username: str
-    password: str
+    username: str = ""
+    password: str = ""
     connection_type: str = "ssh"
     display_label: str = ""
+    serial_port: str = ""
+    baud_rate: int = 0
 
 
 class SaveProfileRequest(BaseModel):
@@ -131,6 +141,8 @@ async def create_session(request: CreateSessionRequest) -> dict:
             request.password,
             request.connection_type,
             request.display_label,
+            request.serial_port,
+            request.baud_rate,
         )
         return session
     except Exception as exc:
@@ -153,6 +165,27 @@ async def delete_session(session_id: str) -> dict:
 
     await asyncio.to_thread(session_manager.destroy_session, session_id)
     return {"status": "ok"}
+
+
+@app.get("/api/serial/ports")
+async def list_serial_ports() -> list[dict]:
+    """
+    Return serial ports currently visible to the OS, for the connection
+    dialog's port picker. Best-effort: returns an empty list (never an
+    error) if enumeration fails, so the frontend can fall back to a plain
+    text field.
+    """
+    try:
+        from serial.tools import list_ports
+
+        ports = await asyncio.to_thread(list_ports.comports)
+        return [
+            {"device": p.device, "description": p.description or ""}
+            for p in ports
+        ]
+    except Exception as exc:
+        logger.warning("Serial port enumeration failed: %s", exc)
+        return []
 
 
 # ---------------------------------------------------------------------------

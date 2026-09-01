@@ -3,7 +3,7 @@ connections/manager.py — Session lifecycle manager for ShellMate.
 
 SessionManager is the single source of truth for all active terminal
 sessions.  It maintains a dictionary keyed by UUID session_id, creates
-new sessions (SSH for now, serial in Phase 4), and tears them down cleanly.
+new sessions (SSH or serial), and tears them down cleanly.
 
 Every other part of the backend (WebSocket handlers, AI router, REST
 endpoints) goes through SessionManager — they never touch SSHHandler or
@@ -15,6 +15,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from backend.config import DEFAULT_BAUD_RATE, DEFAULT_SERIAL_PORT
+from backend.connections.serial_handler import SerialHandler
 from backend.connections.ssh_handler import SSHHandler
 from backend.session.buffer import SessionBuffer
 
@@ -40,34 +42,55 @@ class SessionManager:
         password: str,
         connection_type: str = "ssh",
         display_label: str = "",
+        serial_port: str = "",
+        baud_rate: int = 0,
     ) -> dict[str, Any]:
         """
         Create a new session, connect to the device, and store it.
 
         Args:
-            hostname:        Target device hostname or IP.
-            port:            TCP port (SSH: 22).
-            username:        Login username.
-            password:        Login password (never stored in the returned dict).
-            connection_type: "ssh" (serial support coming in Phase 4).
-            display_label:   Human-readable tab label; defaults to hostname.
+            hostname:        Target device hostname or IP (ssh only).
+            port:            TCP port, e.g. 22 (ssh only).
+            username:        Login username (ssh only).
+            password:        Login password, never stored in the returned
+                              dict (ssh only).
+            connection_type: "ssh" or "serial".
+            display_label:   Human-readable tab label; defaults to hostname
+                              (ssh) or the serial port (serial).
+            serial_port:     Serial device, e.g. "COM3" or "/dev/ttyUSB0"
+                              (serial only). Falls back to
+                              config.DEFAULT_SERIAL_PORT when blank.
+            baud_rate:       Serial baud rate (serial only). Falls back to
+                              config.DEFAULT_BAUD_RATE when 0/unset.
 
         Returns:
             Session metadata dict (no password field).
 
         Raises:
-            Exception: Propagates any connection error from SSHHandler so
-                       the caller (REST endpoint) can return a useful error.
+            Exception: Propagates any connection error from the underlying
+                       handler so the caller (REST endpoint) can return a
+                       useful error.
         """
         session_id = str(uuid.uuid4())
-        label = display_label.strip() or hostname
 
         if connection_type == "ssh":
             handler = SSHHandler(hostname, port, username, password)
             channel = handler.connect()  # Raises on failure
+        elif connection_type == "serial":
+            resolved_port = (serial_port or "").strip() or DEFAULT_SERIAL_PORT
+            resolved_baud = baud_rate or DEFAULT_BAUD_RATE
+            handler = SerialHandler(resolved_port, resolved_baud)
+            channel = handler.connect()  # Raises on failure
+            # Serial sessions have no SSH-style hostname/username — reuse
+            # those fields so the tab bar, session list, and AI context
+            # (which reads connection_type/hostname) still render sensibly.
+            hostname = resolved_port
+            port = resolved_baud
+            username = ""
         else:
             raise NotImplementedError(f"Connection type '{connection_type}' not yet supported")
 
+        label = display_label.strip() or hostname
         buffer = SessionBuffer(session_id)
 
         session: dict[str, Any] = {
