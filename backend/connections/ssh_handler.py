@@ -11,6 +11,8 @@ import logging
 
 import paramiko
 
+from backend.connections import host_keys
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,32 +49,53 @@ class SSHHandler:
         """
         Establish the SSH connection and open an interactive shell.
 
-        Uses AutoAddPolicy so the user isn't blocked by host-key prompts —
-        appropriate for a terminal tool where the user is making deliberate
-        connection choices.
+        The server's host key is verified against ShellMate's managed
+        known_hosts store (backend/connections/host_keys.py). The
+        connection is REFUSED if the key is unrecognised — the caller is
+        expected to catch host_keys.UnknownHostKeyError and offer the user
+        a way to approve it explicitly rather than connect blind. A host
+        whose recorded key has changed is always refused
+        (host_keys.HostKeyChangedError) — that is the classic
+        machine-in-the-middle signature.
 
         Returns:
             The paramiko Channel for the interactive shell session.
 
         Raises:
+            host_keys.UnknownHostKeyError: Host key not recognised.
+            host_keys.HostKeyChangedError: A previously-known host presented
+                a DIFFERENT key than what's on record — possible MITM.
             paramiko.AuthenticationException: Bad credentials.
-            paramiko.SSHException: SSH protocol error.
+            paramiko.SSHException: Other SSH protocol error.
             OSError: Network-level failure (host unreachable, port closed).
         """
         self._client = paramiko.SSHClient()
-        self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        host_keys.load_into(self._client)
+        self._client.set_missing_host_key_policy(host_keys.RejectUnknownHostKeyPolicy())
 
         logger.info("Connecting to %s:%d as %s", self.hostname, self.port, self.username)
 
-        self._client.connect(
-            hostname=self.hostname,
-            port=self.port,
-            username=self.username,
-            password=self.password,
-            timeout=15,
-            allow_agent=False,
-            look_for_keys=False,
-        )
+        try:
+            self._client.connect(
+                hostname=self.hostname,
+                port=self.port,
+                username=self.username,
+                password=self.password,
+                timeout=15,
+                allow_agent=False,
+                look_for_keys=False,
+            )
+        except paramiko.BadHostKeyException as exc:
+            # Raised by paramiko itself, independent of the policy above,
+            # whenever a host we already have on record presents a
+            # different key. Re-raise as our own clearly-worded error so
+            # this is never confused with a routine "unknown host".
+            logger.error(
+                "SSH host key for %s:%d has CHANGED since it was last "
+                "recorded — possible machine-in-the-middle attack.",
+                self.hostname, self.port,
+            )
+            raise host_keys.HostKeyChangedError(exc.hostname, exc.key, exc.expected_key) from exc
 
         # Authentication is complete — paramiko's Transport no longer needs
         # the password, so drop our copy. The session still works because
