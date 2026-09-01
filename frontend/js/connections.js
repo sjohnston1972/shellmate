@@ -350,76 +350,151 @@
     }
 
     setLoading(true);
+    await attemptConnect(payload);
+  }
 
+  /**
+   * POST /api/sessions and handle the result, including the
+   * trust-on-first-use (TOFU) host-key approval flow (issue #12):
+   * a 409 with `needs_host_key_approval` means the server's SSH host key
+   * isn't recognised yet. We show the fingerprint, and only on explicit
+   * user acceptance do we call POST /api/host-keys to remember it, then
+   * retry the connection. Declining aborts cleanly with no session created
+   * and no key stored.
+   */
+  async function attemptConnect(payload) {
     try {
-      const response = await fetch('/api/sessions', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || `Server error ${response.status}`);
-      }
-
-      hideConnectionDialog();
-      if (typeof window.createTab === 'function') {
-        window.createTab(data);
-      } else {
-        console.error('createTab() not found — is tabs.js loaded?');
-      }
-
-      // Auto-save profile (no password) so it persists across refreshes.
-      // Skip if a matching profile already exists. Serial profiles reuse
-      // the generic hostname/port profile fields (hostname = port string,
-      // port = baud rate) the same way session metadata does.
-      try {
-        const r = await fetch('/api/profiles');
-        const existing = r.ok ? await r.json() : [];
-
-        const profilePayload = connType === 'serial'
-          ? {
-              name:            payload.display_label || payload.serial_port,
-              hostname:        payload.serial_port,
-              port:            payload.baud_rate,
-              username:        '',
-              connection_type: 'serial',
-            }
-          : {
-              name:            payload.display_label || payload.hostname,
-              hostname:        payload.hostname,
-              port:            payload.port,
-              username:        payload.username,
-              connection_type: 'ssh',
-            };
-
-        const dup = existing.some(p =>
-          p.connection_type === profilePayload.connection_type &&
-          p.hostname === profilePayload.hostname &&
-          p.username === profilePayload.username &&
-          (p.port || 0) === (profilePayload.port || 0)
-        );
-        if (!dup) {
-          await fetch('/api/profiles', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify(profilePayload),
-          });
-          // Refresh both the in-dialog list and the welcome-screen grid so
-          // the new profile is visible without a page reload.
-          await loadProfiles();
-          if (typeof window.renderWelcomeProfiles === 'function') {
-            window.renderWelcomeProfiles();
-          }
-        }
-      } catch (_) { /* non-fatal */ }
-
+      const data = await postCreateSession(payload);
+      await onConnectSuccess(data, payload);
     } catch (err) {
+      if (err && err.hostKeyApproval) {
+        const hk = err.hostKeyApproval;
+        const accepted = window.confirm(
+          `Unrecognised SSH host key for ${hk.hostname}\n\n` +
+          `${hk.key_type} ${hk.fingerprint}\n\n` +
+          `Only accept this if you expect it (e.g. this is the first time ` +
+          `connecting to this device). If you weren't expecting a new key, ` +
+          `click Cancel — this could indicate someone is intercepting the ` +
+          `connection.\n\nAccept and remember this key?`
+        );
+        if (!accepted) {
+          showError('Connection cancelled — host key was not accepted.');
+          setLoading(false);
+          return;
+        }
+        try {
+          await approveHostKey(hk);
+        } catch (approveErr) {
+          showError(approveErr.message || 'Could not store the approved host key.');
+          setLoading(false);
+          return;
+        }
+        // Key is now trusted — retry the same connection.
+        await attemptConnect(payload);
+        return;
+      }
       showError(err.message || 'Could not connect. Check host and credentials.');
       setLoading(false);
     }
+  }
+
+  /**
+   * POST /api/sessions. Resolves with the session dict on success. On a
+   * 409 host-key-approval response, rejects with an Error carrying a
+   * `hostKeyApproval` property (the fingerprint payload) instead of a
+   * generic message, so callers can branch on it. Any other non-OK
+   * response rejects with a plain Error.
+   */
+  async function postCreateSession(payload) {
+    const response = await fetch('/api/sessions', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      if (response.status === 409 && data && data.detail && data.detail.needs_host_key_approval) {
+        const err = new Error(data.detail.message || 'Unrecognised SSH host key.');
+        err.hostKeyApproval = data.detail;
+        throw err;
+      }
+      throw new Error((data && data.detail) || `Server error ${response.status}`);
+    }
+    return data;
+  }
+
+  /** POST /api/host-keys to persist a user-approved fingerprint. */
+  async function approveHostKey(hk) {
+    const res = await fetch('/api/host-keys', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        hostname:   hk.hostname,
+        key_type:   hk.key_type,
+        key_base64: hk.key_base64,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.detail || 'Could not store the approved host key.');
+    }
+    return data;
+  }
+
+  /** Shared success path for a newly created session (initial or post-approval retry). */
+  async function onConnectSuccess(data, payload) {
+    hideConnectionDialog();
+    if (typeof window.createTab === 'function') {
+      window.createTab(data);
+    } else {
+      console.error('createTab() not found — is tabs.js loaded?');
+    }
+
+    // Auto-save profile (no password) so it persists across refreshes.
+    // Skip if a matching profile already exists. Serial profiles reuse
+    // the generic hostname/port profile fields (hostname = port string,
+    // port = baud rate) the same way session metadata does.
+    try {
+      const r = await fetch('/api/profiles');
+      const existing = r.ok ? await r.json() : [];
+
+      const profilePayload = payload.connection_type === 'serial'
+        ? {
+            name:            payload.display_label || payload.serial_port,
+            hostname:        payload.serial_port,
+            port:            payload.baud_rate,
+            username:        '',
+            connection_type: 'serial',
+          }
+        : {
+            name:            payload.display_label || payload.hostname,
+            hostname:        payload.hostname,
+            port:            payload.port,
+            username:        payload.username,
+            connection_type: 'ssh',
+          };
+
+      const dup = existing.some(p =>
+        p.connection_type === profilePayload.connection_type &&
+        p.hostname === profilePayload.hostname &&
+        p.username === profilePayload.username &&
+        (p.port || 0) === (profilePayload.port || 0)
+      );
+      if (!dup) {
+        await fetch('/api/profiles', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(profilePayload),
+        });
+        // Refresh both the in-dialog list and the welcome-screen grid so
+        // the new profile is visible without a page reload.
+        await loadProfiles();
+        if (typeof window.renderWelcomeProfiles === 'function') {
+          window.renderWelcomeProfiles();
+        }
+      }
+    } catch (_) { /* non-fatal */ }
   }
 
   // -------------------------------------------------------------------------

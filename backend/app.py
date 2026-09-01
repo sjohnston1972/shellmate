@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.connections.manager import SessionManager
+from backend.connections.host_keys import UnknownHostKeyError, approve_host_key
 from backend.profiles import get_profiles, save_profile, delete_profile
 from backend.settings_store import get_settings, get_settings_for_ui, update_settings
 from backend.ai.router import stream_chat
@@ -151,6 +152,14 @@ class UpdateSettingsRequest(BaseModel):
     settings: dict
 
 
+class ApproveHostKeyRequest(BaseModel):
+    """Body for POST /api/host-keys — trust-on-first-use approval (issue #12)."""
+
+    hostname: str    # paramiko lookup form, e.g. "10.0.0.1" or "[10.0.0.1]:2222"
+    key_type: str     # e.g. "ssh-ed25519"
+    key_base64: str   # PKey.get_base64() value, as returned by the 409 prompt
+
+
 @app.post("/api/sessions")
 async def create_session(request: CreateSessionRequest) -> dict:
     """
@@ -158,6 +167,11 @@ async def create_session(request: CreateSessionRequest) -> dict:
 
     The SSH connection is made synchronously here; if it fails the error
     is returned as a 400 so the frontend can show a useful message.
+
+    An unrecognised SSH host key is a special case: rather than a generic
+    400, it returns 409 with a machine-readable body so the frontend can
+    show a trust-on-first-use fingerprint prompt (see POST /api/host-keys)
+    instead of just an error banner.
     """
     try:
         # Run the blocking paramiko connect in a thread so we don't stall
@@ -174,9 +188,47 @@ async def create_session(request: CreateSessionRequest) -> dict:
             request.baud_rate,
         )
         return session
+    except UnknownHostKeyError as exc:
+        logger.warning("Unknown SSH host key for %s: %s", request.hostname, exc.fingerprint)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "needs_host_key_approval": True,
+                "hostname": exc.hostname,
+                "fingerprint": exc.fingerprint,
+                "key_type": exc.key_type,
+                "key_base64": exc.key_base64,
+                "message": str(exc),
+            },
+        ) from exc
     except Exception as exc:
         logger.error("Failed to create session: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/host-keys")
+async def approve_host_key_endpoint(request: ApproveHostKeyRequest) -> dict:
+    """
+    Approve an SSH host key offered during a trust-on-first-use prompt.
+
+    Called after the user reviews the fingerprint returned by a 409 from
+    POST /api/sessions and explicitly accepts it. Persists the key to
+    ShellMate's managed known_hosts store so the same host connects
+    silently from then on; it does NOT retry the connection itself — the
+    frontend re-submits POST /api/sessions after this succeeds.
+    """
+    try:
+        fingerprint = await asyncio.to_thread(
+            approve_host_key, request.hostname, request.key_type, request.key_base64,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    logger.warning(
+        "SSH host key approved via trust-on-first-use for %s (%s)",
+        request.hostname, fingerprint,
+    )
+    return {"status": "ok", "hostname": request.hostname, "fingerprint": fingerprint}
 
 
 @app.get("/api/sessions")

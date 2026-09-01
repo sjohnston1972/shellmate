@@ -10,7 +10,8 @@ connection against it. This module provides:
   - RejectUnknownHostKeyPolicy — the default `missing_host_key` policy,
     which refuses any host key not already recorded and raises
     UnknownHostKeyError with enough detail (fingerprint, key type, raw key)
-    for a caller to eventually drive a trust-on-first-use approval flow
+    for a caller to drive a trust-on-first-use approval flow (issue #12)
+  - approve_host_key() — persists a key the user has explicitly approved
 
 Host keys that ARE recorded but no longer match what the server presents
 are rejected by paramiko itself (`BadHostKeyException`, raised straight out
@@ -115,3 +116,44 @@ def load_into(client: "paramiko.SSHClient") -> None:
     """Load the managed known_hosts store into a freshly-created SSHClient."""
     path = ensure_known_hosts_file()
     client.load_host_keys(str(path))
+
+
+def approve_host_key(hostname: str, key_type: str, key_base64: str) -> str:
+    """
+    Persist a host key the user has explicitly approved (TOFU accept flow,
+    issue #12) into the managed known_hosts store.
+
+    Args:
+        hostname:  The paramiko-formatted lookup name — plain hostname for
+                   port 22, "[hostname]:port" otherwise. This must be
+                   exactly the value returned in the fingerprint prompt
+                   (UnknownHostKeyError.hostname) so the entry lines up with
+                   what SSHClient.connect() will look up next time.
+        key_type:  e.g. "ssh-ed25519", "ssh-rsa", "ecdsa-sha2-nistp256".
+        key_base64: The key's base64 blob, as returned by PKey.get_base64().
+
+    Returns:
+        The fingerprint of the key that was stored, for logging/confirmation.
+
+    Raises:
+        ValueError: If key_type/key_base64 don't decode to a valid key.
+    """
+    path = ensure_known_hosts_file()
+    host_keys = paramiko.HostKeys()
+    try:
+        host_keys.load(str(path))
+    except IOError:
+        pass
+
+    try:
+        key_bytes = base64.b64decode(key_base64, validate=True)
+        key = paramiko.PKey.from_type_string(key_type, key_bytes)
+    except Exception as exc:
+        raise ValueError(f"Invalid host key data: {exc}") from exc
+
+    host_keys.add(hostname, key_type, key)
+    host_keys.save(str(path))
+
+    fp = key_fingerprint(key)
+    logger.info("Host key approved and stored for %s (%s %s)", hostname, key_type, fp)
+    return fp
