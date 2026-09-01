@@ -12,6 +12,15 @@ import os
 HOST: str = os.getenv("SHELLMATE_HOST", "127.0.0.1")
 PORT: int = int(os.getenv("SHELLMATE_PORT", "8765"))
 
+# WebSocket handshake Origin allow-list (comma-separated). Used to reject
+# Cross-Site WebSocket Hijacking attempts on /ws/terminal and /ws/chat.
+# Defaults cover the local dev server plus whatever HOST/PORT are configured;
+# override for reverse-proxy / non-default deployments.
+SHELLMATE_ALLOWED_ORIGINS: str = os.getenv(
+    "SHELLMATE_ALLOWED_ORIGINS",
+    f"http://localhost:{PORT},http://127.0.0.1:{PORT},http://{HOST}:{PORT}",
+)
+
 # Claude API — accept either ANTHROPIC_API_KEY or CLAUDE_API_KEY
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY", "")
 

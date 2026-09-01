@@ -34,7 +34,14 @@ from backend.profiles import get_profiles, save_profile, delete_profile
 from backend.settings_store import get_settings, get_settings_for_ui, update_settings
 from backend.ai.router import stream_chat
 from backend.ai import chroma_client
-from backend.config import DEFAULT_AI_BACKEND, JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY
+from backend.config import (
+    DEFAULT_AI_BACKEND,
+    JIRA_URL,
+    JIRA_USER_EMAIL,
+    JIRA_API_TOKEN,
+    JIRA_PROJECT_KEY,
+    SHELLMATE_ALLOWED_ORIGINS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +72,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------------------------------------------------------------------------
+# WebSocket Origin allow-list — CORS middleware above does NOT cover
+# WebSocket routes (browsers don't apply CORS/same-origin policy to the WS
+# handshake), so /ws/terminal and /ws/chat validate Origin themselves.
+# ---------------------------------------------------------------------------
+
+_ALLOWED_WS_ORIGINS = {
+    origin.strip() for origin in SHELLMATE_ALLOWED_ORIGINS.split(",") if origin.strip()
+}
+
+
+def _origin_allowed(websocket: WebSocket) -> bool:
+    """
+    Validate the WebSocket handshake Origin header against the configured
+    allow-list. Fails closed: a missing or unrecognised Origin is rejected,
+    never permitted by default.
+    """
+    origin = websocket.headers.get("origin")
+    if not origin:
+        return False
+    return origin in _ALLOWED_WS_ORIGINS
 
 # ---------------------------------------------------------------------------
 # Static file serving
@@ -440,6 +469,15 @@ async def terminal_websocket(websocket: WebSocket, session_id: str) -> None:
     the browser each connect here with their own session_id — they are
     completely independent.
     """
+
+    if not _origin_allowed(websocket):
+        logger.warning(
+            "Rejected WebSocket handshake on /ws/terminal (session %s) from disallowed origin: %r",
+            session_id, websocket.headers.get("origin"),
+        )
+        await websocket.close(code=4403)
+        return
+
     await websocket.accept()
 
     session = session_manager.get_session(session_id)
@@ -585,6 +623,15 @@ async def chat_websocket(websocket: WebSocket) -> None:
       {"type": "done"}                     — stream complete
       {"type": "error",  "message": "..."}  — on failure
     """
+
+    if not _origin_allowed(websocket):
+        logger.warning(
+            "Rejected WebSocket handshake on /ws/chat from disallowed origin: %r",
+            websocket.headers.get("origin"),
+        )
+        await websocket.close(code=4403)
+        return
+
     await websocket.accept()
     try:
         while True:
