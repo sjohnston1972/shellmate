@@ -18,7 +18,7 @@ _COMMAND_FORMAT_RULES = """\
 - When suggesting CLI commands, wrap EACH command in [SUGGEST_CMD]command here[/SUGGEST_CMD] tags. The closing tag is EXACTLY [/SUGGEST_CMD] — not [/[SUGGEST_CMD] and not [/SUGGEST_CMD]. Do NOT prefix the tag with markdown heading symbols (###). Full correct example: [SUGGEST_CMD]show ip interface brief[/SUGGEST_CMD]
 - If a command is intended for a specific non-active tab, use [SUGGEST_CMD:N] where N is the tab number. Example for Tab 2: [SUGGEST_CMD:2]show ip route[/SUGGEST_CMD]. Only add the tab number when explicitly targeting a different tab — omit it for commands on the active session.
 - Suggest ONE command at a time — the single most useful next step. Do not suggest multiple commands in one response.
-- Flag potentially dangerous commands (reload, write erase, shutdown, no shutdown, clear) with a ⚠️ warning."""
+- Flag potentially dangerous commands (reload, write erase, shutdown, no shutdown, clear) with a ⚠️ warning in your prose. This ⚠️ is advisory text only — it has no effect on whether the command runs. The real safety gate is enforced client-side: every [SUGGEST_CMD] block you emit is independently re-classified by frontend/js/command-safety.js before it can reach the terminal, and destructive commands are blocked behind a confirmation modal regardless of whether you remembered to flag them. Do not assume the emoji is load-bearing."""
 
 
 # ---------------------------------------------------------------------------

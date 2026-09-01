@@ -11,7 +11,7 @@ A split-screen, multi-tab network terminal with a built-in agentic AI copilot. B
 - **Tshoot / Learn mode toggle** — single pill in the tab bar flips the AI persona between *Troubleshoot* (terse, fix-it-now) and *Learn* (patient mentor that explains the why)
 - **Knowledge-base augmentation (Chroma DB)** — point ShellMate at a Chroma vector store of your design guidelines and matching snippets are auto-retrieved and injected into every AI prompt; silently disabled when not configured
 - **Configurable provider keys** — set Anthropic / OpenAI / xAI / DeepSeek / Ollama / Chroma credentials in the Settings panel as well as `.env`; the UI shows *"Already preconfigured by env variable"* when an env var is the active source
-- **Command suggestions** — the AI suggests CLI commands you can approve with one click; dangerous commands get a confirmation prompt
+- **Command suggestions** — the AI suggests CLI commands you can approve with one click; destructive commands (`reload`, `write erase`, `shutdown`/`no shutdown`, `clear`, `delete`, `format`, and similar) are detected client-side and require an explicit confirmation naming the target device before they run
 - **Saved connection profiles** — save device details (no passwords stored) for one-click reconnect from the welcome screen
 - **Session-aware context** — use `/context all` or `/context 2` to pull in other tabs; the AI always knows which tab is active
 - **Tab management** — drag to reorder, right-click context menu, `Ctrl+1–9` shortcuts, `Ctrl+T`/`Ctrl+W`
@@ -151,6 +151,7 @@ shellmate/
         ├── tabs.js            # Tab bar management + drag reorder
         ├── terminal.js        # xterm.js init, copy/paste, settings apply
         ├── mode.js            # Tshoot / Learn pill toggle, persists to localStorage
+        ├── command-safety.js  # Dangerous-command classifier + confirmation modal
         ├── chat.js            # AI chat panel, command blocks, streaming
         ├── settings.js        # Settings panel (incl. provider keys + Chroma)
         ├── jira.js            # Conclude-session → Jira modal
@@ -166,6 +167,7 @@ ShellMate uses the *Deep Space* design system — dark background, Space Grotesk
 - **No built-in authentication.** ShellMate is an interactive SSH client, so anyone who reaches the web UI can launch sessions to any host the server can route to. Treat it like an open shell:
   - Local development (`python run.py`) binds to `127.0.0.1` only — fine for a single user on the same machine.
   - The Docker / `docker-compose.yml` path binds to `0.0.0.0:8765` so the container is reachable on its network. **Do not expose it directly to the public internet.** Put it behind something that authenticates users — Cloudflare Access, Tailscale, an SSO-aware reverse proxy, etc.
+- **Dangerous AI-suggested commands require explicit confirmation.** Every command in a `[SUGGEST_CMD]` block is re-classified client-side (`frontend/js/command-safety.js`, regardless of whether the AI's prose remembered to flag it with ⚠️) before it can reach the terminal. Commands matching a destructive pattern — `reload`, `write erase`/`wr erase`/`erase startup-config`, interface `shutdown`/`no shutdown`, `clear`, `delete`, `format`, risky `copy ... startup-config`, `boot system`, `config-register` — open a modal naming the exact command and target device; nothing is sent until you click "Run anyway". Everything else still sends in one click. This is a best-effort pattern match, not a full command interpreter — it can be evaded (e.g. aliases, unusual whitespace it doesn't normalise, or destructive commands outside the matched vocabulary) and does not replace reading what you're about to run.
 - **Passwords are never persisted and dropped from memory once the SSH session is open.** They're prompted on each new connection, used to complete the authentication handshake, then cleared — the long-lived session object holds an empty string in their place.
 - **API keys** live in `.env` only — never in code, never in saved profiles.
 - **Session buffers** are in-memory and cleared on disconnect, unless file logging is explicitly enabled.
