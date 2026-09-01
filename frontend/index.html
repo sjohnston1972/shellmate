@@ -226,32 +226,59 @@
         </div>
 
         <div class="form-group">
-          <label for="field-hostname">Hostname / IP <span class="required">*</span></label>
-          <input type="text" id="field-hostname" placeholder="192.168.1.1" required />
+          <label for="field-conntype">Connection type</label>
+          <select id="field-conntype">
+            <option value="ssh" selected>SSH</option>
+            <option value="serial">Serial / Console</option>
+          </select>
         </div>
 
-        <div class="form-row">
+        <!-- SSH-only fields -->
+        <div id="ssh-fields">
           <div class="form-group">
-            <label for="field-port">Port</label>
-            <input type="number" id="field-port" value="22" min="1" max="65535" />
+            <label for="field-hostname">Hostname / IP <span class="required">*</span></label>
+            <input type="text" id="field-hostname" placeholder="192.168.1.1" />
           </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="field-port">Port</label>
+              <input type="number" id="field-port" value="22" min="1" max="65535" />
+            </div>
+          </div>
+
           <div class="form-group">
-            <label for="field-conntype">Type</label>
-            <select id="field-conntype">
-              <option value="ssh" selected>SSH</option>
-              <option value="serial">Serial</option>
+            <label for="field-username">Username <span class="required">*</span></label>
+            <input type="text" id="field-username" placeholder="admin" />
+          </div>
+
+          <div class="form-group">
+            <label for="field-password">Password <span class="required">*</span></label>
+            <input type="password" id="field-password" />
+          </div>
+        </div>
+
+        <!-- Serial-only fields -->
+        <div id="serial-fields" class="hidden">
+          <div class="form-group">
+            <label for="field-serial-port">Serial port <span class="required">*</span></label>
+            <input type="text" id="field-serial-port" list="serial-ports-datalist" placeholder="COM3" />
+            <datalist id="serial-ports-datalist"></datalist>
+          </div>
+
+          <div class="form-group">
+            <label for="field-baud">Baud rate</label>
+            <select id="field-baud">
+              <option value="1200">1200</option>
+              <option value="2400">2400</option>
+              <option value="4800">4800</option>
+              <option value="9600" selected>9600</option>
+              <option value="19200">19200</option>
+              <option value="38400">38400</option>
+              <option value="57600">57600</option>
+              <option value="115200">115200</option>
             </select>
           </div>
-        </div>
-
-        <div class="form-group">
-          <label for="field-username">Username <span class="required">*</span></label>
-          <input type="text" id="field-username" placeholder="admin" required />
-        </div>
-
-        <div class="form-group">
-          <label for="field-password">Password <span class="required">*</span></label>
-          <input type="password" id="field-password" required />
         </div>
 
         <div id="form-error" class="form-error hidden"></div>

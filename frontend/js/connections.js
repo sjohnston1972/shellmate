@@ -38,6 +38,12 @@
     document.getElementById('btn-save-profile')
       .addEventListener('click', handleSaveProfile);
 
+    document.getElementById('field-conntype')
+      .addEventListener('change', (e) => {
+        updateFieldsForType(e.target.value);
+        if (e.target.value === 'serial') loadSerialPorts();
+      });
+
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) hideConnectionDialog();
     });
@@ -63,11 +69,21 @@
     form.reset();
     document.getElementById('field-port').value = '22';
     if (prefill) fillFromProfile(prefill);
+    updateFieldsForType(document.getElementById('field-conntype').value);
     loadProfiles();
     overlay.classList.remove('hidden');
-    // Focus password if prefilled (user only needs to enter password), else hostname
+    if (document.getElementById('field-conntype').value === 'serial') {
+      loadSerialPorts();
+    }
+    // Focus password if prefilled (user only needs to enter password), else
+    // hostname — or the serial port field when connection type is serial.
     setTimeout(() => {
-      document.getElementById(prefill ? 'field-password' : 'field-hostname').focus();
+      const type = document.getElementById('field-conntype').value;
+      const focusId = type === 'serial'
+        ? 'field-serial-port'
+        : (prefill ? 'field-password' : 'field-hostname');
+      const el = document.getElementById(focusId);
+      if (el) el.focus();
     }, 50);
   }
 
@@ -192,27 +208,92 @@
 
   function fillFromProfile(p) {
     document.getElementById('field-label').value    = p.name || '';
-    document.getElementById('field-hostname').value = p.hostname || '';
-    document.getElementById('field-port').value     = p.port || 22;
-    document.getElementById('field-username').value = p.username || '';
     document.getElementById('field-conntype').value = p.connection_type || 'ssh';
-    document.getElementById('field-password').focus();
+
+    if (p.connection_type === 'serial') {
+      // Serial profiles reuse the generic hostname/port profile fields:
+      // hostname holds the port string (e.g. "COM3"), port holds the baud rate.
+      document.getElementById('field-serial-port').value = p.hostname || '';
+      document.getElementById('field-baud').value = String(p.port || 9600);
+    } else {
+      document.getElementById('field-hostname').value = p.hostname || '';
+      document.getElementById('field-port').value     = p.port || 22;
+      document.getElementById('field-username').value = p.username || '';
+    }
+
+    updateFieldsForType(p.connection_type || 'ssh');
+    if (p.connection_type === 'serial') {
+      loadSerialPorts();
+    } else {
+      document.getElementById('field-password').focus();
+    }
+  }
+
+  /**
+   * Show/hide the SSH-only vs serial-only field groups in the connection
+   * dialog based on the selected connection type.
+   */
+  function updateFieldsForType(connType) {
+    const isSerial = connType === 'serial';
+    document.getElementById('ssh-fields').classList.toggle('hidden', isSerial);
+    document.getElementById('serial-fields').classList.toggle('hidden', !isSerial);
+  }
+
+  /**
+   * Populate the serial port datalist from GET /api/serial/ports.
+   * Best-effort — the port field remains a free-text input if this fails
+   * or returns nothing, so users can always type a port manually.
+   */
+  async function loadSerialPorts() {
+    const datalist = document.getElementById('serial-ports-datalist');
+    if (!datalist) return;
+    try {
+      const res = await fetch('/api/serial/ports');
+      if (!res.ok) return;
+      const ports = await res.json();
+      datalist.innerHTML = '';
+      ports.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.device;
+        opt.label = p.description ? `${p.device} — ${p.description}` : p.device;
+        datalist.appendChild(opt);
+      });
+    } catch (e) { /* silently fall back to free text */ }
   }
 
   async function handleSaveProfile() {
-    const hostname = document.getElementById('field-hostname').value.trim();
-    const username = document.getElementById('field-username').value.trim();
-    if (!hostname || !username) {
-      showError('Fill in hostname and username to save a profile.');
-      return;
+    const connType = document.getElementById('field-conntype').value;
+    let payload;
+
+    if (connType === 'serial') {
+      const serialPort = document.getElementById('field-serial-port').value.trim();
+      if (!serialPort) {
+        showError('Fill in a serial port to save a profile.');
+        return;
+      }
+      payload = {
+        name:            document.getElementById('field-label').value.trim() || serialPort,
+        hostname:        serialPort,
+        port:            parseInt(document.getElementById('field-baud').value, 10) || 9600,
+        username:        '',
+        connection_type: 'serial',
+      };
+    } else {
+      const hostname = document.getElementById('field-hostname').value.trim();
+      const username = document.getElementById('field-username').value.trim();
+      if (!hostname || !username) {
+        showError('Fill in hostname and username to save a profile.');
+        return;
+      }
+      payload = {
+        name:            document.getElementById('field-label').value.trim() || hostname,
+        hostname,
+        port:            parseInt(document.getElementById('field-port').value, 10) || 22,
+        username,
+        connection_type: 'ssh',
+      };
     }
-    const payload = {
-      name:            document.getElementById('field-label').value.trim() || hostname,
-      hostname,
-      port:            parseInt(document.getElementById('field-port').value, 10) || 22,
-      username,
-      connection_type: document.getElementById('field-conntype').value,
-    };
+
     try {
       await fetch('/api/profiles', {
         method:  'POST',
@@ -236,22 +317,37 @@
     e.preventDefault();
     clearError();
 
-    const hostname = document.getElementById('field-hostname').value.trim();
-    const username = document.getElementById('field-username').value.trim();
-    const password = document.getElementById('field-password').value;
+    const connType = document.getElementById('field-conntype').value;
+    let payload;
 
-    if (!hostname) { showError('Hostname is required.'); return; }
-    if (!username) { showError('Username is required.'); return; }
-    if (!password) { showError('Password is required.'); return; }
+    if (connType === 'serial') {
+      const serialPort = document.getElementById('field-serial-port').value.trim();
+      if (!serialPort) { showError('Serial port is required.'); return; }
 
-    const payload = {
-      hostname,
-      port:             parseInt(document.getElementById('field-port').value, 10) || 22,
-      username,
-      password,
-      connection_type:  document.getElementById('field-conntype').value,
-      display_label:    document.getElementById('field-label').value.trim(),
-    };
+      payload = {
+        connection_type: 'serial',
+        serial_port:     serialPort,
+        baud_rate:       parseInt(document.getElementById('field-baud').value, 10) || 9600,
+        display_label:   document.getElementById('field-label').value.trim(),
+      };
+    } else {
+      const hostname = document.getElementById('field-hostname').value.trim();
+      const username = document.getElementById('field-username').value.trim();
+      const password = document.getElementById('field-password').value;
+
+      if (!hostname) { showError('Hostname is required.'); return; }
+      if (!username) { showError('Username is required.'); return; }
+      if (!password) { showError('Password is required.'); return; }
+
+      payload = {
+        hostname,
+        port:             parseInt(document.getElementById('field-port').value, 10) || 22,
+        username,
+        password,
+        connection_type:  'ssh',
+        display_label:    document.getElementById('field-label').value.trim(),
+      };
+    }
 
     setLoading(true);
 
@@ -276,26 +372,40 @@
       }
 
       // Auto-save profile (no password) so it persists across refreshes.
-      // Skip if a profile with the same hostname+username+port already exists.
+      // Skip if a matching profile already exists. Serial profiles reuse
+      // the generic hostname/port profile fields (hostname = port string,
+      // port = baud rate) the same way session metadata does.
       try {
         const r = await fetch('/api/profiles');
         const existing = r.ok ? await r.json() : [];
+
+        const profilePayload = connType === 'serial'
+          ? {
+              name:            payload.display_label || payload.serial_port,
+              hostname:        payload.serial_port,
+              port:            payload.baud_rate,
+              username:        '',
+              connection_type: 'serial',
+            }
+          : {
+              name:            payload.display_label || payload.hostname,
+              hostname:        payload.hostname,
+              port:            payload.port,
+              username:        payload.username,
+              connection_type: 'ssh',
+            };
+
         const dup = existing.some(p =>
-          p.hostname === payload.hostname &&
-          p.username === payload.username &&
-          (p.port || 22) === (payload.port || 22)
+          p.connection_type === profilePayload.connection_type &&
+          p.hostname === profilePayload.hostname &&
+          p.username === profilePayload.username &&
+          (p.port || 0) === (profilePayload.port || 0)
         );
         if (!dup) {
           await fetch('/api/profiles', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({
-              name:            payload.display_label || payload.hostname,
-              hostname:        payload.hostname,
-              port:            payload.port,
-              username:        payload.username,
-              connection_type: payload.connection_type,
-            }),
+            body:    JSON.stringify(profilePayload),
           });
           // Refresh both the in-dialog list and the welcome-screen grid so
           // the new profile is visible without a page reload.
