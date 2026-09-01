@@ -6,6 +6,8 @@ Also provides effective-config helpers — settings.json overrides .env values
 for API keys, model URLs, and the Chroma DB URL.
 """
 import json
+import os
+import stat
 from pathlib import Path
 
 from backend import config as env_config
@@ -122,7 +124,23 @@ def update_settings(partial: dict) -> dict:
     cleaned = _strip_masked_secrets(partial, current)
     merged = _deep_merge(current, cleaned)
     SETTINGS_FILE.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+    _restrict_settings_file_permissions()
     return get_settings_for_ui()
+
+
+def _restrict_settings_file_permissions() -> None:
+    """
+    settings.json can contain plaintext provider API keys (see README
+    Security section), so lock it down to the owner only. This is a
+    best-effort hardening step, not a substitute for encryption: on POSIX
+    it sets mode 0600; on Windows os.chmod has limited effect (it can only
+    clear the read-only attribute) so this mainly matters on POSIX hosts
+    and containers.
+    """
+    try:
+        os.chmod(SETTINGS_FILE, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        pass
 
 
 def get_effective(field: str, env_fallback: str = "") -> str:
