@@ -276,6 +276,7 @@
   function populateForm(s) {
     const t = s.terminal   || {};
     const l = s.logging    || {};
+    const sec = s.security || {};
     const a = s.appearance || {};
     const p = s.providers  || {};
     const env = s.env_preconfigured || {};
@@ -291,6 +292,9 @@
     _checked('setting-copy-on-select',    !!t.copy_on_select);
     _checked('setting-logging-enabled',   !!l.enabled);
     _val('setting-log-dir',          l.directory || 'logs');
+    // Default-off lab escape hatch (issue #13) — must default to false even
+    // if the key is missing from stored settings entirely.
+    _checked('setting-ssh-auto-add-host-keys', !!sec.ssh_auto_add_host_keys);
     _val('setting-color-scheme',     a.color_scheme  || 'deep_space');
     _val('setting-ui-font-size',     a.ui_font_size  || 14);
 
@@ -357,6 +361,11 @@
       logging: {
         enabled:   _gchecked('setting-logging-enabled'),
         directory: _gval('setting-log-dir'),
+      },
+      security: {
+        // Default-off lab escape hatch (issue #13). Backend logs loudly on
+        // every connection made while this is true — see ssh_handler.py.
+        ssh_auto_add_host_keys: _gchecked('setting-ssh-auto-add-host-keys'),
       },
       appearance: {
         color_scheme:        schemeName,

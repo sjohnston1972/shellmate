@@ -508,6 +508,20 @@ GigEth0/2     unassigned    YES unset  down     down
           </div>
         </section>
 
+        <!-- Security -->
+        <section class="settings-section">
+          <h3 class="settings-section-title">Security</h3>
+          <p class="settings-section-hint">By default ShellMate verifies every SSH host key and asks you to approve any new one it hasn't seen before. Only turn this on for throwaway lab gear that regenerates its host key often — it disables that protection.</p>
+          <div class="setting-row">
+            <label class="setting-label" for="setting-ssh-auto-add-host-keys">Auto-add SSH Host Keys (lab mode)</label>
+            <label class="toggle">
+              <input type="checkbox" id="setting-ssh-auto-add-host-keys" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <p class="settings-section-hint settings-warning">Warning: when enabled, ShellMate trusts and silently stores ANY SSH host key with no fingerprint prompt — including one that has changed. This removes protection against machine-in-the-middle attacks. Leave off unless you understand the risk.</p>
+        </section>
+
       </div>
       <div class="panel-footer">
         <button id="settings-save" class="btn-primary">

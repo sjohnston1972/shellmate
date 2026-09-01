@@ -2687,6 +2687,11 @@ body.chat-popped #chat-pane:not(.popped-out) { display: none; }
   color: var(--on-surface);
 }
 
+.settings-warning {
+  color: var(--error);
+  margin-top: 4px;
+}
+
 .setting-row-stack {
   flex-direction: column;
   align-items: stretch;

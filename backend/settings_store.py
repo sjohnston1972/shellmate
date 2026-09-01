@@ -47,6 +47,15 @@ DEFAULT_SETTINGS: dict = {
         # "learn" | "tshoot" — controls which system-prompt persona is used.
         "mode": "tshoot",
     },
+    "security": {
+        # Lab-only escape hatch (issue #13): when True, SSH connections
+        # silently trust and store ANY host key (paramiko AutoAddPolicy)
+        # instead of the secure default of rejecting unknown keys and
+        # requiring trust-on-first-use approval. MUST default to False —
+        # this disables machine-in-the-middle protection. ssh_handler.py
+        # logs a loud warning on every connection made while this is on.
+        "ssh_auto_add_host_keys": False,
+    },
 }
 
 # Which env-var name backs each provider field, for the "preconfigured by env"

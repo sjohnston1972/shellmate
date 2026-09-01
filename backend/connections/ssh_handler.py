@@ -45,24 +45,33 @@ class SSHHandler:
     # Public API
     # ------------------------------------------------------------------
 
-    def connect(self) -> "paramiko.Channel":
+    def connect(self, auto_add_host_keys: bool = False) -> "paramiko.Channel":
         """
         Establish the SSH connection and open an interactive shell.
 
-        The server's host key is verified against ShellMate's managed
-        known_hosts store (backend/connections/host_keys.py). The
-        connection is REFUSED if the key is unrecognised — the caller is
-        expected to catch host_keys.UnknownHostKeyError and offer the user
-        a way to approve it explicitly rather than connect blind. A host
-        whose recorded key has changed is always refused
-        (host_keys.HostKeyChangedError) — that is the classic
-        machine-in-the-middle signature.
+        By default, the server's host key is verified against ShellMate's
+        managed known_hosts store (backend/connections/host_keys.py) and
+        the connection is REFUSED if the key is unrecognised — the caller
+        is expected to catch host_keys.UnknownHostKeyError and drive a
+        trust-on-first-use approval flow (issue #12) rather than connect
+        blind. A host whose recorded key has changed is always refused
+        (host_keys.HostKeyChangedError), regardless of any setting — that
+        is the classic machine-in-the-middle signature.
+
+        Args:
+            auto_add_host_keys: Legacy insecure behaviour — silently trust
+                and store ANY unknown host key with no prompt. Defaults to
+                False (secure). Should only ever be True when the caller has
+                confirmed the user explicitly opted in via the default-off
+                "ssh_auto_add_host_keys" lab setting (issue #13); doing so
+                disables MITM protection for this connection.
 
         Returns:
             The paramiko Channel for the interactive shell session.
 
         Raises:
-            host_keys.UnknownHostKeyError: Host key not recognised.
+            host_keys.UnknownHostKeyError: Host key not recognised and
+                auto_add_host_keys is False.
             host_keys.HostKeyChangedError: A previously-known host presented
                 a DIFFERENT key than what's on record — possible MITM.
             paramiko.AuthenticationException: Bad credentials.
@@ -71,7 +80,18 @@ class SSHHandler:
         """
         self._client = paramiko.SSHClient()
         host_keys.load_into(self._client)
-        self._client.set_missing_host_key_policy(host_keys.RejectUnknownHostKeyPolicy())
+
+        if auto_add_host_keys:
+            logger.warning(
+                "SSH host-key verification is DISABLED for %s:%d — the "
+                "'ssh_auto_add_host_keys' lab setting is ON. Any host key "
+                "will be trusted and stored WITHOUT prompting. This "
+                "disables protection against machine-in-the-middle attacks.",
+                self.hostname, self.port,
+            )
+            self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        else:
+            self._client.set_missing_host_key_policy(host_keys.RejectUnknownHostKeyPolicy())
 
         logger.info("Connecting to %s:%d as %s", self.hostname, self.port, self.username)
 

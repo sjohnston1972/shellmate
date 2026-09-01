@@ -19,6 +19,7 @@ from backend.config import DEFAULT_BAUD_RATE, DEFAULT_SERIAL_PORT
 from backend.connections.serial_handler import SerialHandler
 from backend.connections.ssh_handler import SSHHandler
 from backend.session.buffer import SessionBuffer
+from backend.settings_store import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -67,15 +68,27 @@ class SessionManager:
             Session metadata dict (no password field).
 
         Raises:
-            Exception: Propagates any connection error from the underlying
-                       handler so the caller (REST endpoint) can return a
-                       useful error.
+            backend.connections.host_keys.UnknownHostKeyError: Host key not
+                recognised (only when the ssh_auto_add_host_keys lab setting
+                is off, which is the default) — the REST layer should turn
+                this into a trust-on-first-use prompt rather than a bare error.
+            backend.connections.host_keys.HostKeyChangedError: A previously
+                trusted host presented a different key — possible MITM.
+            Exception: Propagates any other connection error from the
+                       underlying handler so the caller (REST endpoint) can
+                       return a useful error.
         """
         session_id = str(uuid.uuid4())
 
         if connection_type == "ssh":
+            # Default-off lab escape hatch (issue #13): only when a user has
+            # explicitly enabled it does SSH fall back to trusting any host
+            # key without verification. Off by default everywhere else.
+            auto_add_host_keys = bool(
+                get_settings().get("security", {}).get("ssh_auto_add_host_keys", False)
+            )
             handler = SSHHandler(hostname, port, username, password)
-            channel = handler.connect()  # Raises on failure
+            channel = handler.connect(auto_add_host_keys=auto_add_host_keys)  # Raises on failure
         elif connection_type == "serial":
             resolved_port = (serial_port or "").strip() or DEFAULT_SERIAL_PORT
             resolved_baud = baud_rate or DEFAULT_BAUD_RATE
