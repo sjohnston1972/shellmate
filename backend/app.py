@@ -459,6 +459,35 @@ _PROMPT_PATTERN = re.compile(
 )
 
 
+def _sanitize_log_component(value: str) -> str:
+    """
+    Strip anything that isn't a safe filename character from a user-supplied
+    string (e.g. a device hostname) so it can never introduce a path
+    separator or traversal sequence into a log filename.
+    """
+    cleaned = re.sub(r"[^\w\-.]", "_", value or "")
+    cleaned = cleaned.lstrip(".")  # no leading dots — blocks ".." and dotfiles
+    cleaned = cleaned.strip("_")
+    return cleaned or "session"
+
+
+def _build_log_path(log_dir: Path, session_id: str, hostname: str) -> Path:
+    """
+    Build the per-session log file path, guaranteeing the result stays
+    inside log_dir regardless of what hostname contains (e.g. '../../evil',
+    '..\\..\\evil', or 'a/b/c').
+    """
+    safe_host = _sanitize_log_component(hostname)
+    candidate = log_dir / f"{session_id[:8]}-{safe_host}.log"
+    try:
+        candidate.resolve().relative_to(log_dir.resolve())
+    except ValueError:
+        # Defensive fallback — should be unreachable given the sanitiser
+        # above, but never write outside log_dir under any circumstance.
+        candidate = log_dir / f"{session_id[:8]}-session.log"
+    return candidate
+
+
 @app.websocket("/ws/terminal/{session_id}")
 async def terminal_websocket(websocket: WebSocket, session_id: str) -> None:
     """
@@ -469,7 +498,6 @@ async def terminal_websocket(websocket: WebSocket, session_id: str) -> None:
     the browser each connect here with their own session_id — they are
     completely independent.
     """
-
     if not _origin_allowed(websocket):
         logger.warning(
             "Rejected WebSocket handshake on /ws/terminal (session %s) from disallowed origin: %r",
@@ -561,7 +589,7 @@ async def terminal_websocket(websocket: WebSocket, session_id: str) -> None:
                 if _settings.get("logging", {}).get("enabled"):
                     _log_dir = Path(__file__).parent.parent / _settings["logging"].get("directory", "logs")
                     _log_dir.mkdir(parents=True, exist_ok=True)
-                    _log_file = _log_dir / f"{session_id[:8]}-{session.get('hostname', 'session')}.log"
+                    _log_file = _build_log_path(_log_dir, session_id, session.get("hostname", "session"))
                     from datetime import datetime
                     with open(_log_file, "a", encoding="utf-8") as _lf:
                         _lf.write(f"[{datetime.now().isoformat()}] {text}")
@@ -623,7 +651,6 @@ async def chat_websocket(websocket: WebSocket) -> None:
       {"type": "done"}                     — stream complete
       {"type": "error",  "message": "..."}  — on failure
     """
-
     if not _origin_allowed(websocket):
         logger.warning(
             "Rejected WebSocket handshake on /ws/chat from disallowed origin: %r",
