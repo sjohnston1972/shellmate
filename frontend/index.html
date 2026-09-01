@@ -528,6 +528,32 @@ GigEth0/2     unassigned    YES unset  down     down
     </div>
   </div>
 
+  <!-- ================================================================
+       DANGEROUS COMMAND CONFIRMATION MODAL (AI command blocks)
+       Owned by command-safety.js — see classifyCommand()/showCommandConfirm().
+       Separate component from the connection dialog above; keep changes here
+       self-contained so the two don't collide.
+  ================================================================ -->
+  <div id="cmd-confirm-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="cmd-confirm-title">
+    <div id="cmd-confirm-dialog">
+      <div id="cmd-confirm-header">
+        <span class="material-symbols-outlined" style="color:var(--error)">warning</span>
+        <h2 id="cmd-confirm-title">Confirm Command</h2>
+      </div>
+      <p class="cmd-confirm-label">This AI-suggested command may change or disrupt device state:</p>
+      <pre id="cmd-confirm-preview"></pre>
+      <p id="cmd-confirm-reason" class="cmd-confirm-reason"></p>
+      <p id="cmd-confirm-target" class="cmd-confirm-target"></p>
+      <div id="cmd-confirm-actions">
+        <button id="cmd-confirm-cancel" class="btn-secondary">Cancel</button>
+        <button id="cmd-confirm-run" class="btn-primary cmd-confirm-run-btn">
+          <span class="material-symbols-outlined">warning</span>
+          Run anyway
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Copy toast notification -->
   <div id="copy-toast" class="hidden">
     <span class="material-symbols-outlined">check</span>
@@ -642,6 +668,7 @@ GigEth0/2     unassigned    YES unset  down     down
   <script src="/static/js/tabs.js"></script>
   <script src="/static/js/terminal.js"></script>
   <script src="/static/js/mode.js?v=3"></script>
+  <script src="/static/js/command-safety.js"></script>
   <script src="/static/js/chat.js?v=2"></script>
   <script src="/static/js/settings.js?v=2"></script>
   <script src="/static/js/logs.js"></script>

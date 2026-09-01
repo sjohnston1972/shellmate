@@ -449,10 +449,39 @@
     }
 
     const clean = cmd.replace(/^[`'"]+|[`'"]+$/g, '').trim();
-    ws.send(JSON.stringify({ type: 'input', data: clean + '\r' }));
 
-    const baselineLines = tab.getBufferLines ? tab.getBufferLines() : 0;
-    startOutputWatcher(clean, baselineLines, tab.sessionId);
+    const doSend = () => {
+      ws.send(JSON.stringify({ type: 'input', data: clean + '\r' }));
+      const baselineLines = tab.getBufferLines ? tab.getBufferLines() : 0;
+      startOutputWatcher(clean, baselineLines, tab.sessionId);
+    };
+
+    // Safety gate (see frontend/js/command-safety.js): commands matching
+    // the dangerous-command classifier require an explicit confirmation
+    // naming the target device before they reach the live terminal. This
+    // is evaluated on the final command text — after quote-stripping above
+    // and after any inline edit via the ✎ button, since callers always
+    // read the current DOM text before invoking injectCommand().
+    const classification = typeof window.classifyCommand === 'function'
+      ? window.classifyCommand(clean)
+      : { dangerous: false, reason: '' };
+
+    if (classification.dangerous) {
+      const deviceLabel = targetTabNum
+        ? (tab.label ? `Tab ${targetTabNum}: ${tab.label}` : `Tab ${targetTabNum}`)
+        : (tab.label || 'active session');
+
+      if (typeof window.showCommandConfirm === 'function') {
+        window.showCommandConfirm(clean, classification.reason, deviceLabel, doSend);
+      } else {
+        // Modal unavailable — fail closed rather than silently sending a
+        // flagged command with no confirmation.
+        appendErrorBubble(`Blocked "${clean}" — confirmation dialog unavailable.`);
+      }
+      return;
+    }
+
+    doSend();
   }
 
   // -----------------------------------------------------------------------

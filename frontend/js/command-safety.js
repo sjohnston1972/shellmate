@@ -1,14 +1,24 @@
 /*
- * command-safety.js — dangerous-command classifier for AI command blocks.
+ * command-safety.js — dangerous-command classifier + confirmation modal.
  *
- * Owns the classification half of the "suggest-and-approve" safety gate
- * (see GitHub issue #6). classifyCommand(cmd) is a pure function, no DOM:
- * it returns { dangerous: boolean, reason: string }. Exposed on window
- * (browser) and via module.exports (so it can be unit-tested under plain
- * Node — see command-safety.test.js).
+ * Owns the "suggest-and-approve" safety gate for AI command blocks
+ * (see GitHub issues #6 and #7). Two independent pieces live here:
  *
- * The confirmation modal that consumes this (issue #7) is added to this
- * same file in a later change; chat.js's injectCommand() is the call site.
+ *   1. classifyCommand(cmd) — pure function, no DOM. Returns
+ *      { dangerous: boolean, reason: string }. Exposed on window (browser)
+ *      and via module.exports (so it can be unit-tested under plain Node
+ *      — see command-safety.test.js).
+ *
+ *   2. A confirmation modal, wired the same way as the existing paste
+ *      modal (#paste-overlay) in index.html: window.showCommandConfirm(cmd,
+ *      reason, deviceLabel, onConfirm) shows it and invokes onConfirm only
+ *      if the user explicitly clicks "Run anyway". The markup lives in its
+ *      own section of index.html (#cmd-confirm-overlay), separate from the
+ *      connection dialog so the two stay out of each other's way.
+ *
+ * chat.js calls classifyCommand() + showCommandConfirm() from
+ * injectCommand() before anything is written to the terminal — see
+ * frontend/js/chat.js.
  */
 (function (root) {
   'use strict';
@@ -76,7 +86,73 @@
     return { dangerous: false, reason: '' };
   }
 
+  // -------------------------------------------------------------------
+  // 2. Confirmation modal (browser only — no-op if there is no DOM)
+  // -------------------------------------------------------------------
+
+  function initModal() {
+    const overlay   = document.getElementById('cmd-confirm-overlay');
+    const preview   = document.getElementById('cmd-confirm-preview');
+    const reasonEl  = document.getElementById('cmd-confirm-reason');
+    const targetEl  = document.getElementById('cmd-confirm-target');
+    const btnRun    = document.getElementById('cmd-confirm-run');
+    const btnCancel = document.getElementById('cmd-confirm-cancel');
+
+    if (!overlay || !preview || !btnRun || !btnCancel) {
+      // Modal markup not present (e.g. this page doesn't include it) —
+      // leave window.showCommandConfirm undefined so callers can detect
+      // it and fail closed instead of silently sending.
+      return;
+    }
+
+    let _pendingCb = null;
+
+    function show(cmd, reason, deviceLabel, onConfirm) {
+      preview.textContent = cmd;
+      if (reasonEl) reasonEl.textContent = reason || 'This command changes device state.';
+      if (targetEl) targetEl.textContent = deviceLabel ? `Target: ${deviceLabel}` : '';
+      _pendingCb = onConfirm;
+      overlay.classList.remove('hidden');
+      btnCancel.focus();
+    }
+
+    function hide() {
+      overlay.classList.add('hidden');
+      _pendingCb = null;
+    }
+
+    btnRun.addEventListener('click', () => {
+      const cb = _pendingCb;
+      hide();
+      if (cb) cb();
+    });
+
+    btnCancel.addEventListener('click', hide);
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) hide();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (overlay.classList.contains('hidden')) return;
+      if (e.key === 'Escape') hide();
+      // Deliberately no Enter-to-confirm here — unlike the paste modal,
+      // this gate is protecting destructive commands and should require
+      // an explicit pointer click on "Run anyway".
+    });
+
+    root.showCommandConfirm = show;
+  }
+
   root.classifyCommand = classifyCommand;
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initModal);
+    } else {
+      initModal();
+    }
+  }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { classifyCommand };
